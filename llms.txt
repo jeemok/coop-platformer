@@ -14,11 +14,11 @@ Source: https://github.com/jeemok/coop-platformer
 - Two modes:
   - **Online**: each person opens the site on their own laptop or phone and joins the same room code.
   - **One screen**: for people in the same room. One laptop picks "One screen" and shows the game plus a QR code. Everyone else scans the QR (or opens `/pad?room=CODE`) on their phone and uses it as a controller (hold sideways: left, right, jump).
-- 8 long levels (150-355 tiles); levels 3-8 need 2-4 or more players. Up to 10 players per room.
+- 8 long levels (150-355 tiles); levels 3-8 need 2-4 or more players. Free rooms hold 5 players; a host can unlock up to 10 with a one-time Party Pack key. Donations: https://buymeacoffee.com/jeemok
 
 ## Technical notes (for agents/developers)
 
 - Authoritative Node 22 + `ws` server (60 Hz tick, 30 Hz snapshots), shared deterministic physics in `prototype/sim.js`, client prediction in `prototype/predict.js`, single-file canvas client in `prototype/public/index.html`, phone controller in `prototype/public/pad.html`.
-- WebSocket protocol (same origin as the page): first message `{"t":"join","room":"ABCD","nick":"Name","role":"pad"|"screen"|omitted,"level":1}`. Inputs: `{"t":"in","l":0|1,"r":0|1,"j":0|1}` (pads send these unnumbered every ~250 ms). `role:"screen"` is a watch-only display that can send `{"t":"go","l":N}` and `{"t":"restart"}`.
+- WebSocket protocol (same origin as the page): first message `{"t":"join","room":"ABCD","nick":"Name","role":"pad"|"screen"|omitted,"level":1}`. Inputs: `{"t":"in","l":0|1,"r":0|1,"j":0|1}` (pads send these unnumbered every ~250 ms). `key` (optional, on join) or `{"t":"unlock","key":"..."}` (host only) unlocks 6-10 players. `role:"screen"` is a watch-only display that can send `{"t":"go","l":N}` and `{"t":"restart"}`.
 - `GET /levels.json` lists level names. Run locally: `cd prototype && npm install && npm start`; tests: `npm test`.
 - Docs: README.md, docs/STACK.md (architecture, netcode, costs, known limits).

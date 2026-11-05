@@ -76,9 +76,14 @@
   <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
   <label style="font-size:13px;opacity:.8">Start at level (only used when you create a new room)</label>
   <select id="startLevel"></select>
+  <details id="keybox" style="margin:6px 0;font-size:13px"><summary style="cursor:pointer;opacity:.85">Party Pack: 6-10 players per room</summary>
+    <div style="opacity:.75;margin:6px 0">Free rooms hold 5 players. The host can unlock 10 with a Party Pack key (one-time purchase).</div>
+    <input id="key" placeholder="Party Pack key (optional)" autocomplete="off" maxlength="100">
+    <a id="buyLink" target="_blank" rel="noopener" style="display:none;color:#ffd23f">Get a Party Pack key &rarr;</a></details>
   <button id="go">Play</button>
   <div id="partyNote" style="display:none;font-size:13px;opacity:.8">Opens the game on this screen with a QR code. Everyone scans it with their phone to get a controller.</div>
   <div id="err"></div>
+  <div style="text-align:center;margin-top:6px"><a id="donate" target="_blank" rel="noopener" style="display:inline-block;background:#ffdd00;color:#111;padding:8px 14px;border-radius:999px;font-weight:700;font-size:14px;text-decoration:none">&#9749; Buy me a coffee</a></div>
   <p style="font-size:13px;opacity:.7">Move: arrows / A D. Jump: space / W / up (hold = high, tap = hop). Stand on friends, push them, get the key to the door, then everyone enter the door. M = mute.</p>
 </div>
 <div id="feat"><span>1-10 players</span><span>Phone or laptop</span><span>One-screen party mode</span><span>8 long levels</span><span>Free to play</span></div>
@@ -102,7 +107,7 @@
 <div id="joinbox"><div class="hint">Scan with your phone to get a controller</div><div class="qr" id="qr"></div><div class="code" id="jcode"></div><div class="url" id="jurl"></div></div>
 <div id="touch"><div class="tb" id="tl">&#9664;</div><div class="tb" id="tr">&#9654;</div><div class="tb" id="tj">JUMP</div></div>
 <div id="game">
-  <div id="bar"><span id="info"></span><span id="ping"></span><select id="lvlSel" title="Only the host (first player in the room) can change level"></select><button id="mute">Sound: on</button><button id="copy">Copy invite link</button><button id="restart">Restart level (host)</button></div>
+  <div id="bar"><span id="info"></span><span id="ping"></span><select id="lvlSel" title="Only the host (first player in the room) can change level"></select><button id="mute">Sound: on</button><button id="copy">Copy invite link</button><button id="restart">Restart level (host)</button><button id="unlock" style="display:none;background:#ffb703;font-weight:700">Unlock 10 players</button><a id="donateBar" target="_blank" rel="noopener" style="background:#ffdd00;color:#111;padding:4px 10px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">&#9749; Donate</a></div>
   <canvas id="c"></canvas>
 </div>
 <script src="/sim.js"></script>
@@ -114,7 +119,7 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 $('room').value = (params.get('room') || '').toUpperCase();
 $('nick').value = params.get('nick') || localStorage.getItem('nick') || '';
-let ws, me, code, grid = [], lvlName = '', lvlMin = 1, lvlHint = '', lvlNo = 0, lvlOf = 0, lvlAt = 0, roster = new Map(), host = null;
+let ws, me, code, grid = [], lvlName = '', lvlMin = 1, lvlHint = '', lvlNo = 0, lvlOf = 0, lvlAt = 0, roster = new Map(), host = null, unlocked = false, cfg = { donate: 'https://buymeacoffee.com/jeemok', buy: '' };
 const pred = new Predictor();      // our own player: predicted locally, corrected by the server
 const remote = new Map();          // other players: id -> { samples: [{t,x,y}], dead }  (interpolated)
 let screenMode = false, partyPick = params.get('mode') === 'party';
@@ -161,25 +166,30 @@ function setPick(party) {
   $('nick').style.display = $('room').style.display = party ? 'none' : ''; $('partyNote').style.display = party ? 'block' : 'none';
   $('go').textContent = party ? 'Start one-screen game' : 'Play';
 }
+try { $('key').value = localStorage.getItem('key') || ''; } catch (e) {}
+fetch('/config.json').then(r => r.json()).then(c => { cfg = c; $('donate').href = $('donateBar').href = c.donate; if (c.buy) { $('buyLink').href = c.buy; $('buyLink').style.display = 'inline'; } }).catch(() => {});
+$('donate').href = $('donateBar').href = cfg.donate;
 $('mOnline').onclick = () => setPick(false); $('mParty').onclick = () => setPick(true); setPick(partyPick);
 
 // ---------- networking ----------
 $('go').onclick = () => {
   audio();
   const nick = $('nick').value.trim() || 'Player';
-  localStorage.setItem('nick', nick);
+  localStorage.setItem('nick', nick); try { localStorage.setItem('key', $('key').value.trim()); } catch (e) {}
   code = $('room').value.trim().toUpperCase() || Math.random().toString(36).slice(2, 6).toUpperCase();
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   const startLevel = +$('startLevel').value || 0; localStorage.setItem('startLevel', String(startLevel));
   if (partyPick) code = ($('room').value.trim().toUpperCase() || Math.random().toString(36).slice(2, 6).toUpperCase());
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick, level: startLevel, role: partyPick ? 'screen' : undefined }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick, level: startLevel, role: partyPick ? 'screen' : undefined, key: $('key').value.trim() || undefined }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
+    else if (m.t === 'unlocked') { alert('Unlocked! This room now holds up to 10 players.'); }
+    else if (m.t === 'uerr') { alert(m.m); }
     else if (m.t === 'welcome') { screenMode = !!m.screen; me = screenMode ? null : m.id; code = m.code; history.replaceState(null, '', '?room=' + code + (screenMode ? '&mode=party' : '')); $('join').style.display = 'none'; $('game').style.display = 'block'; document.body.classList.add('playing'); if (screenMode) { document.body.classList.add('screenmode'); showJoinBox(); } else setupTouch(); resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
     else if (m.t === 'pong') { const rtt = performance.now() - m.c; ping = pingSeen ? ping * 0.7 + rtt * 0.3 : rtt; pingSeen = true; }
     else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; camX = null; spawnCol = 1; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
-    else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
+    else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; unlocked = !!m.unlocked; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
     else if (m.t === 's') {
       const now = performance.now();
       for (const [id, x, y, dead, vy, og, ack] of m.p) {
@@ -225,6 +235,7 @@ function setupTouch() {
   }
   document.addEventListener('contextmenu', e => e.preventDefault());
 }
+$('unlock').onclick = () => { if (cfg.buy && !confirm('Do you already have a Party Pack key?\nOK = enter it, Cancel = open the store to buy one')) { window.open(cfg.buy, '_blank'); return; } const k = prompt('Paste your Party Pack key'); if (k) ws.send(JSON.stringify({ t: 'unlock', key: k.trim() })); };
 $('restart').onclick = () => { ws.send(JSON.stringify({ t: 'restart' })); $('restart').blur(); };
 
 const map = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j' };
@@ -633,6 +644,7 @@ function draw(now) {
   $('info').textContent = `${lvlNo ? `Level ${lvlNo}/${lvlOf}: ` : ''}${lvlName}${lvlMin > 1 ? ' (needs ' + lvlMin + '+ players)' : ''} | room ${code} | ${roster.size} ${screenMode ? 'phone' : 'player'}${roster.size === 1 ? '' : 's'}${doorOpen ? ' | door open: everyone in!' : ''}`;
   if (pingSeen) { $('ping').textContent = Math.round(ping) + ' ms'; $('ping').style.color = ping < 80 ? '#7be37b' : ping < 160 ? '#ffd34d' : '#ff7b7b'; }
   $('restart').style.display = host === me || screenMode ? '' : 'none';
+  $('unlock').style.display = !unlocked && (host === me || screenMode) ? '' : 'none';
   $('lvlSel').disabled = host !== me && !screenMode;
   if (screenMode) { const jb = $('joinbox'); if (!roster.size) jb.className = 'big'; else if (!jb.className || jb.className === 'big' && !jb.dataset.seen) { jb.className = 'small'; jb.dataset.seen = 1; } }
 }

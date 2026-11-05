@@ -17,3 +17,9 @@ services:
         value: "10"
       - key: MAX_PLAYERS
         value: "10"
+      - key: FREE_PLAYERS   # free rooms hold this many; the host unlocks up to MAX_PLAYERS with a Party Pack key
+        value: "5"
+      - key: BUY_URL        # store page where a Party Pack key is sold (set in the dashboard)
+        sync: false
+      - key: LS_PRODUCT_ID  # Lemon Squeezy product id; only keys for this product unlock rooms
+        sync: false

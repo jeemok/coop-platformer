@@ -12,7 +12,7 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
 | Hosting (planned) | Render free web service, Singapore | Players are mostly in Southeast Asia. |
 | Source | GitHub (private repo) | Render deploys from it via `render.yaml`. |
 | Art / audio | Drawn in code | Characters, key, door, tiles, background and particles are drawn with Canvas calls; sound effects are a tiny WebAudio synth. No asset files. |
-| Payments | Not built | Planned: one-time host unlock via a merchant of record or Stripe, plus a donation link. |
+| Payments | Built (needs seller setup) | Host unlock for 6-10 players via a license key validated against Lemon Squeezy (`license.js`); donations via Buy Me a Coffee. |
 
 ## Architecture
 
@@ -59,6 +59,10 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
   constant prediction corrections). One queued input per tick also stops a client from speeding up.
 - **Rooms** are created on first join by room code, hold up to 10 players, and are deleted when empty.
   `MAX_ROOMS` caps live rooms per server; a new room beyond it gets "Servers full".
+
+## Paid unlock
+
+Free rooms hold `FREE_PLAYERS` (5). A key (from the join message, or `{t:'unlock'}` from the host/screen) is checked by `license.js`: `UNLOCK_KEYS` first, then Lemon Squeezy `POST /v1/licenses/validate` (no secret needed; must be `status: active` and `meta.product_id == LS_PRODUCT_ID`; positives cached 10 min). Valid means `room.unlocked = true` and the cap is `MAX_PLAYERS` (10) until the room empties. A provider outage never unlocks. Five bad keys per connection are tolerated. Limitation: a key is not bound to one room or limited by activations, so a leaked key works for anyone.
 
 ## Gameplay rules
 
@@ -116,7 +120,7 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 - Browser client not covered by automated tests; never verified on real phones (the pad UI was only checked in headless Chrome) or other browsers.
 - Prediction is exact for solo movement but can snap up to about 23 px when pushing another player
   (we only see them 100 ms in the past).
-- No accounts, no reconnection slot-holding, no kick button, no payments, no sound. (All are in the design doc.)
+- No accounts, no reconnection slot-holding, no kick button, no sound. (All are in the design doc.)
 - Rooms live in server memory; a restart or free-tier spin-down drops everyone.
 - Remote riders on moving platforms are shifted at draw time, which is approximate. Prediction while riding is within ~2 px in the simulated-network test.
 - Levels 3, 4, 6 need 2-3+ players and levels 7, 8 need 4+. Difficulty with real humans is untested: bots pass every level with no deaths, which only proves they are solvable. If a key carrier dies the key returns to where it started, which on a long level can be far back.

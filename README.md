@@ -28,11 +28,16 @@ For friends in the same room. One laptop shows the game and a QR code; everyone 
 
 ## The game
 
-- 1-10 players per room (free up to 5 is the planned model; payments are not built yet).
+- 1-10 players per room. Free rooms hold 5; the host can unlock 10 with a one-time **Party Pack** key (see [Payments](#payments-and-support)).
 - 8 long levels (150-355 tiles, 4-11 screens) with checkpoints, a mini-map, a level picker and a room host who can switch levels.
 - Moving platforms (lifts and ferries), saw lanes, spring pads, timed gates with buttons, stack-to-reach keys, spike gardens.
 - Fair by test: bots play every level with the minimum number of players, +2 and a full room of 10, and nobody may die, so each level is provably solvable.
 - Controls: arrows or A/D to move, Space/W/Up to jump (hold = high, tap = hop), M = mute.
+
+## Payments and support
+
+- **Donate:** [buymeacoffee.com/jeemok](https://buymeacoffee.com/jeemok) (button on the home page and in the game bar).
+- **Party Pack (6-10 players):** a host enters a license key when creating a room, or clicks *Unlock 10 players* in the game bar. The server checks the key against Lemon Squeezy's public license-validation endpoint (only active keys for `LS_PRODUCT_ID` count) and then that room holds up to 10. Set `BUY_URL` to the store page and `LS_PRODUCT_ID` in the host's environment. `UNLOCK_KEYS=a,b` accepts fixed keys (manual sales and testing). Keys are not bound to one room yet, so a shared key works for anyone who has it.
 
 ## Run it yourself
 
@@ -51,7 +56,7 @@ cd prototype
 npm test
 ```
 
-94 automated checks plus physics assertions, all headless:
+106 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
@@ -59,6 +64,7 @@ npm test
 | `test-levels.js` | Bots complete all 8 campaign levels with min, min+2 and 10 players, with no deaths. Debug one: `ONLY=6:4 TRACE=1 node test-levels.js` |
 | `test-classic.js` | The 12 original 40-tile levels, kept as fixtures, plus negative tests |
 | `test-server.js` | Real WebSockets: level choice, host rights, one-screen mode (screen vs pads, idle pads stop) |
+| `test-license.js` | Party Pack key checks with the payment API mocked: wrong product, refunded keys and outages never unlock |
 | `test-predict.js` | The real client prediction against the real server over a simulated laggy network |
 
 The browser client itself (drawing, touch) is not covered by automated tests; it was checked by hand in headless Chrome, not yet on real phones.

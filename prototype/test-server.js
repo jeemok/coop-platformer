@@ -4,7 +4,7 @@ const { LEVELS } = require('./levels');
 const PORT = 3900 + Math.floor(Math.random() * 90);
 process.env.PORT = String(PORT);
 const { spawn } = require('child_process');
-const srv = spawn('node', ['server.js'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+const srv = spawn('node', ['server.js'], { env: { ...process.env, PORT: String(PORT), UNLOCK_KEYS: 'GOOD-KEY,OTHER-KEY' }, stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const get = p => new Promise((res, rej) => http.get({ host: '127.0.0.1', port: PORT, path: p }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => res(d)); }).on('error', rej));
 function client(room, nick, level) {
@@ -30,13 +30,13 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   a.ws.send(JSON.stringify({ t: 'go', l: 99 })); a.ws.send(JSON.stringify({ t: 'go', l: -1 })); a.ws.send(JSON.stringify({ t: 'go', l: 'x' })); await sleep(200);
   check('out-of-range level requests are ignored', () => assert.deepStrictEqual(a.lvls, [5, 8]));
   console.log('One-screen mode (big screen + phone controllers):');
-  function node(room, role, nick, level) {
-    const c = { snaps: [], lvls: [], roster: null, err: null, id: null, ws: new WebSocket('ws://127.0.0.1:' + PORT) };
-    c.ws.on('open', () => c.ws.send(JSON.stringify({ t: 'join', room, nick, role, level })));
-    c.ws.on('message', d => { const m = JSON.parse(d); if (m.t === 's') c.snaps.push(m); else if (m.t === 'lvl') c.lvls.push(m.n); else if (m.t === 'roster') c.roster = m; else if (m.t === 'err') c.err = m.m; else if (m.t === 'welcome') c.id = m; });
+  function node(room, role, nick, level, key) {
+    const c = { snaps: [], lvls: [], roster: null, err: null, full: 0, unlocked: 0, uerr: null, id: null, ws: new WebSocket('ws://127.0.0.1:' + PORT) };
+    c.ws.on('open', () => c.ws.send(JSON.stringify({ t: 'join', room, nick, role, level, key })));
+    c.ws.on('message', d => { const m = JSON.parse(d); if (m.t === 's') c.snaps.push(m); else if (m.t === 'lvl') c.lvls.push(m.n); else if (m.t === 'roster') c.roster = m; else if (m.t === 'err') { c.err = m.m; c.full = m.full; } else if (m.t === 'unlocked') c.unlocked = 1; else if (m.t === 'uerr') c.uerr = m.m; else if (m.t === 'welcome') c.id = m; });
     return c;
   }
-  const scr = node('PARTY', 'screen', 'screen', 2); await sleep(250);
+  const scr = node('PARTY', 'screen', 'screen', 2, 'GOOD-KEY'); await sleep(250);
   check('a screen creates the room on the chosen level and is not a player', () => { assert.deepStrictEqual(scr.lvls, [3]); assert.strictEqual(scr.roster.p.length, 0); assert.strictEqual(scr.id.screen, 1); });
   const pad1 = node('PARTY', 'pad', 'ann'); const pad2 = node('PARTY', 'pad', 'bob'); await sleep(300);
   check('phones join as players and the screen sees them', () => { assert.strictEqual(scr.roster.p.length, 2); assert.strictEqual(pad1.roster.scr, 1); });
@@ -55,6 +55,26 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   const eleventh = node('PARTY', 'pad', 'late'); const scr2 = node('PARTY', 'screen', 's2'); await sleep(300);
   check('10 phones fit, the 11th is refused, and a second screen can still watch a full room', () => { assert(eleventh.err && /full/i.test(eleventh.err), 'no full error'); assert(!scr2.err && scr2.id && scr2.id.screen, 'second screen refused'); });
   for (const c of [scr, pad1, pad2, scr2, eleventh, ...extra]) c.ws.close();
+  console.log('Paid unlock (free rooms hold 5, a paid host unlocks 10):');
+  const free = ['a', 'b', 'c', 'd', 'e'].map(n => node('FREE1', undefined, n)); await sleep(400);
+  const sixth = node('FREE1', undefined, 'f'); await sleep(250);
+  check('a free room holds 5 and the 6th is told to ask the host to unlock', () => { assert.strictEqual(free[4].roster.p.length, 5); assert(sixth.err && sixth.full === 1, 'not refused'); assert.strictEqual(free[0].roster.cap, 5); });
+  free[0].ws.send(JSON.stringify({ t: 'unlock', key: 'nope' })); await sleep(250);
+  check('a wrong key is rejected', () => { assert(free[0].uerr); assert(!free[0].unlocked); });
+  free[1].ws.send(JSON.stringify({ t: 'unlock', key: 'GOOD-KEY' })); await sleep(250);
+  check('only the host can unlock', () => assert(!free[1].unlocked));
+  free[0].ws.send(JSON.stringify({ t: 'unlock', key: 'GOOD-KEY' })); await sleep(250);
+  const more = ['g', 'h', 'i', 'j', 'm'].map(n => node('FREE1', undefined, n)); const over = node('FREE1', undefined, 'k'); await sleep(500);
+  check('after the host unlocks, the room holds 10 (and not 11)', () => { assert(free[0].unlocked); assert.strictEqual(free[0].roster.cap, 10); assert.strictEqual(free[0].roster.p.length, 10); assert(over.err && !over.full, 'cap not 10'); });
+  const paidRoom = node('PAID1', undefined, 'p0', undefined, 'OTHER-KEY'); await sleep(250);
+  const guests = Array.from({ length: 9 }, (_, i) => node('PAID1', undefined, 'g' + i)); await sleep(500);
+  check('a room created with a valid key is unlocked from the start', () => { assert.strictEqual(paidRoom.roster.cap, 10); assert.strictEqual(paidRoom.roster.p.length, 10); });
+  const badCreate = node('BADK1', undefined, 'x', undefined, 'wrong'); await sleep(250);
+  check('a room created with a bad key is just a free room', () => { assert(badCreate.id); assert.strictEqual(badCreate.roster.cap, 5); });
+  const cfg = JSON.parse(await get('/config.json'));
+  check('/config.json exposes the donate link and caps', () => { assert(/buymeacoffee\.com\/jeemok/.test(cfg.donate)); assert.strictEqual(cfg.free, 5); assert.strictEqual(cfg.max, 10); });
+  for (const c of [...free, sixth, ...more, over, paidRoom, ...guests, badCreate]) c.ws.close();
+  await sleep(200);
   await sleep(200);
   const solo = node('GONE', 'screen', 's'); await sleep(200); solo.ws.close(); await sleep(200);
   const again = node('GONE', 'pad', 'x'); await sleep(200);
