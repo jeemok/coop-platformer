@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <title>Co-op Platformer (prototype)</title>
 <style>
   html,body{margin:0;background:#1b1d2a;color:#eee;font-family:system-ui,sans-serif;height:100%}
@@ -15,17 +16,45 @@
   #info{flex:1}
   #lvlSel{padding:4px 6px;border-radius:6px;border:0;max-width:210px}
   #ping{font-variant-numeric:tabular-nums;opacity:.85}
+  #modes{display:flex;gap:8px;margin-bottom:8px}
+  #modes button{flex:1;background:#343a55!important;font-size:14px!important;line-height:1.25;padding:10px 6px!important;border:2px solid transparent!important}
+  #modes button.on{border-color:#7f9bff!important;background:#3b4570!important}
+  #modes small{display:block;opacity:.7;font-size:11px;margin-top:3px}
+  #joinbox{display:none;position:fixed;z-index:5;background:#fff;color:#111;border-radius:14px;padding:10px;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.45);transition:all .25s}
+  #joinbox.big{left:50%;top:50%;transform:translate(-50%,-50%);padding:22px 28px}
+  #joinbox.small{right:12px;bottom:34px;padding:6px 8px;font-size:11px;cursor:pointer;opacity:.92}
+  #joinbox .code{font:800 44px/1 system-ui,sans-serif;letter-spacing:.12em;margin:6px 0}
+  #joinbox.small .code{font-size:18px;margin:2px 0}
+  #joinbox .qr{display:inline-block;line-height:0}
+  #joinbox .qr canvas{display:none!important}
+  #joinbox .qr img{display:block!important;margin:0 auto}
+  #joinbox.small .qr canvas,#joinbox.small .qr img{width:84px!important;height:84px!important}
+  #joinbox .url{font-size:13px;opacity:.75}
+  #joinbox.small .url,#joinbox.small .hint{display:none}
+  #joinbox .hint{font-size:15px;margin-top:6px}
+  #touch{display:none;position:fixed;left:0;right:0;bottom:0;height:0;z-index:4;pointer-events:none}
+  #touch .tb{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 14px);width:78px;height:78px;border-radius:22px;background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.45);color:#fff;font-size:34px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  #touch .tb.on{background:rgba(255,255,255,.5)}
+  #tl{left:calc(env(safe-area-inset-left) + 14px)} #tr{left:calc(env(safe-area-inset-left) + 106px)} #tj{right:calc(env(safe-area-inset-right) + 14px);width:104px!important;height:104px!important;border-radius:50%!important;font-size:20px!important;background:rgba(67,99,216,.4)!important}
+  #rot{display:none;position:fixed;inset:0;z-index:9;background:rgba(15,17,28,.94);align-items:center;justify-content:center;text-align:center;font-size:20px;padding:30px}
+  @media (pointer:coarse) and (orientation:portrait){ body.playing #rot{display:flex} }
+  body.screenmode #bar #ping{display:none}
 </style></head><body>
 <div id="join">
   <h2>Co-op Platformer <small>(prototype)</small></h2>
+  <div id="modes"><button id="mOnline" class="on">Online<small>everyone joins from their own laptop or phone</small></button><button id="mParty">One screen<small>this screen shows the game, everyone uses their phone as a controller</small></button></div>
   <input id="nick" placeholder="Your nickname" maxlength="12">
   <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
   <label style="font-size:13px;opacity:.8">Start at level (only used when you create a new room)</label>
   <select id="startLevel"></select>
   <button id="go">Play</button>
+  <div id="partyNote" style="display:none;font-size:13px;opacity:.8">Opens the game on this screen with a QR code. Everyone scans it with their phone to get a controller.</div>
   <div id="err"></div>
   <p style="font-size:13px;opacity:.7">Move: arrows / A D. Jump: space / W / up (hold = high, tap = hop). Stand on friends, push them, get the key to the door, then everyone enter the door. M = mute.</p>
 </div>
+<div id="rot">Turn your phone sideways to play<br>(or use the Controller page on your phone for the one-screen mode)</div>
+<div id="joinbox"><div class="hint">Scan with your phone to get a controller</div><div class="qr" id="qr"></div><div class="code" id="jcode"></div><div class="url" id="jurl"></div></div>
+<div id="touch"><div class="tb" id="tl">&#9664;</div><div class="tb" id="tr">&#9654;</div><div class="tb" id="tj">JUMP</div></div>
 <div id="game">
   <div id="bar"><span id="info"></span><span id="ping"></span><select id="lvlSel" title="Only the host (first player in the room) can change level"></select><button id="mute">Sound: on</button><button id="copy">Copy invite link</button><button id="restart">Restart level (host)</button></div>
   <canvas id="c"></canvas>
@@ -42,6 +71,7 @@ $('nick').value = params.get('nick') || localStorage.getItem('nick') || '';
 let ws, me, code, grid = [], lvlName = '', lvlMin = 1, lvlHint = '', lvlNo = 0, lvlOf = 0, lvlAt = 0, roster = new Map(), host = null;
 const pred = new Predictor();      // our own player: predicted locally, corrected by the server
 const remote = new Map();          // other players: id -> { samples: [{t,x,y}], dead }  (interpolated)
+let screenMode = false, partyPick = params.get('mode') === 'party';
 let camX = null, spawnCol = 1;      // camera (world px of the left screen edge) and the current respawn column
 let key = null, doorOpen = false, win = false, winAt = 0, gateT = 0, ping = 0, pingSeen = false;
 const inp = { l: 0, r: 0, j: 0 };
@@ -79,6 +109,14 @@ function setMuted(m) { muted = m; localStorage.setItem('mute', m ? '1' : '0'); $
 $('mute').onclick = () => { setMuted(!muted); $('mute').blur(); };
 setMuted(muted);
 
+// ---------- mode chooser ----------
+function setPick(party) {
+  partyPick = party; $('mOnline').classList.toggle('on', !party); $('mParty').classList.toggle('on', party);
+  $('nick').style.display = $('room').style.display = party ? 'none' : ''; $('partyNote').style.display = party ? 'block' : 'none';
+  $('go').textContent = party ? 'Start one-screen game' : 'Play';
+}
+$('mOnline').onclick = () => setPick(false); $('mParty').onclick = () => setPick(true); setPick(partyPick);
+
 // ---------- networking ----------
 $('go').onclick = () => {
   audio();
@@ -87,11 +125,12 @@ $('go').onclick = () => {
   code = $('room').value.trim().toUpperCase() || Math.random().toString(36).slice(2, 6).toUpperCase();
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   const startLevel = +$('startLevel').value || 0; localStorage.setItem('startLevel', String(startLevel));
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick, level: startLevel }));
+  if (partyPick) code = ($('room').value.trim().toUpperCase() || Math.random().toString(36).slice(2, 6).toUpperCase());
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick, level: startLevel, role: partyPick ? 'screen' : undefined }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
-    else if (m.t === 'welcome') { me = m.id; code = m.code; history.replaceState(null, '', '?room=' + code); $('join').style.display = 'none'; $('game').style.display = 'block'; resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
+    else if (m.t === 'welcome') { screenMode = !!m.screen; me = screenMode ? null : m.id; code = m.code; history.replaceState(null, '', '?room=' + code + (screenMode ? '&mode=party' : '')); $('join').style.display = 'none'; $('game').style.display = 'block'; document.body.classList.add('playing'); if (screenMode) { document.body.classList.add('screenmode'); showJoinBox(); } else setupTouch(); resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
     else if (m.t === 'pong') { const rtt = performance.now() - m.c; ping = pingSeen ? ping * 0.7 + rtt * 0.3 : rtt; pingSeen = true; }
     else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; camX = null; spawnCol = 1; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
     else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
@@ -117,7 +156,29 @@ $('go').onclick = () => {
   };
   ws.onclose = () => { if ($('game').style.display === 'block') $('info').textContent = 'Disconnected. Refresh to rejoin.'; };
 };
-$('copy').onclick = () => { navigator.clipboard.writeText(location.origin + '/?room=' + code); $('copy').textContent = 'Copied!'; setTimeout(() => $('copy').textContent = 'Copy invite link', 1500); $('copy').blur(); };
+$('copy').onclick = () => { const link = location.origin + (screenMode ? '/pad?room=' : '/?room=') + code, lab = screenMode ? 'Copy phone link' : 'Copy invite link'; try { navigator.clipboard.writeText(link); } catch (e) {} $('copy').textContent = 'Copied!'; setTimeout(() => $('copy').textContent = lab, 1500); $('copy').blur(); };
+
+// one-screen mode: a QR code that opens the phone controller for this room
+function showJoinBox() {
+  const url = location.origin + '/pad?room=' + code; $('jcode').textContent = code; $('jurl').textContent = location.host + '/pad';
+  $('copy').textContent = 'Copy phone link';
+  try { new QRCode($('qr'), { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('qr').textContent = url; }
+  $('joinbox').style.display = 'block'; $('joinbox').onclick = () => { if ($('joinbox').className === 'small') $('joinbox').className = 'big'; else if (roster.size) $('joinbox').className = 'small'; };
+}
+
+// phone/tablet in online mode: on-screen buttons (multi-touch)
+let touchReady = false;
+function setupTouch() {
+  if (touchReady || !(matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window)) return; touchReady = true;
+  $('touch').style.display = 'block'; $('bar').style.fontSize = '12px';
+  const held = { tl: new Set(), tr: new Set(), tj: new Set() };
+  for (const [id, k] of [['tl', 'l'], ['tr', 'r'], ['tj', 'j']]) {
+    const el = $(id), refresh = () => { inp[k] = held[id].size ? 1 : 0; el.classList.toggle('on', !!inp[k]); };
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.setPointerCapture(e.pointerId); held[id].add(e.pointerId); refresh(); audio(); });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(ev, e => { held[id].delete(e.pointerId); refresh(); });
+  }
+  document.addEventListener('contextmenu', e => e.preventDefault());
+}
 $('restart').onclick = () => { ws.send(JSON.stringify({ t: 'restart' })); $('restart').blur(); };
 
 const map = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j' };
@@ -140,6 +201,7 @@ function ghostList(rt) { const out = []; for (const [id, r] of remote) { const p
 
 // fixed 60 Hz simulation tick: predict our own movement immediately and send the numbered input
 function tick() {
+  if (screenMode) return; // the big screen only watches
   pred.setGhosts(ghostList(performance.now() - INTERP_MS));
   const i = pred.step(inp);
   if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'in', s: i.s, l: i.l, r: i.r, j: i.j }));
@@ -453,10 +515,14 @@ function frame(now) {
 function draw(now) {
   const dt = Math.min(0.1, (now - lastDraw) / 1000) || 0.016; lastDraw = now; const t = now / 1000;
   ctx.setTransform(SC, 0, 0, SC, 0, 0);
+  const list = layout(now);
   // camera: follow our own player (a little ahead of the way we face), clamped to the level
   const worldW = (grid[0] ? grid[0].length : 40) * T;
   if (pred.ready) { const rp = pred.renderPos(); const want = Math.max(0, Math.min(worldW - VW, rp.x + PW / 2 - VW / 2 + (inp.r - inp.l) * 70)); camX = camX == null ? want : camX + (want - camX) * Math.min(1, dt * 6); }
-  else if (camX == null) camX = 0;
+  else if (screenMode && list.length) { // one screen for everyone: frame the whole group (or its centre of mass when it is spread wider than the screen)
+    const xs = list.map(p => p.x + PW / 2), mn = Math.min(...xs), mx = Math.max(...xs), mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const want = Math.max(0, Math.min(worldW - VW, (mx - mn < VW - 260 ? (mn + mx) / 2 : mean) - VW / 2)); camX = camX == null ? want : camX + (want - camX) * Math.min(1, dt * 3);
+  } else if (camX == null) camX = 0;
   const cam = Math.round(camX);
   if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0); else ctx.clearRect(0, 0, VW, VH);
   for (const hl of hillLayers) { const ox = -((camX * hl.par) % VW + VW) % VW; ctx.drawImage(hl.c, ox, 0); ctx.drawImage(hl.c, ox + VW, 0); }
@@ -465,7 +531,6 @@ function draw(now) {
   const door = doorRect();
   doorAnim += ((doorOpen ? 1 : 0) - doorAnim) * Math.min(1, dt * 6);
   gateAnim += ((gateT > 0 ? 1 : 0) - gateAnim) * Math.min(1, dt * 7);
-  const list = layout(now);
   if (door) { let inside = 0; for (const p of list) if (p.x < door.x + door.w && p.x + PW > door.x && p.y < door.y + door.h && p.y + PH > door.y) inside++; drawDoor(door, doorAnim, t, inside, roster.size); }
   if (tileCanvas) ctx.drawImage(tileCanvas, cam, 0, VW, VH, cam, 0, VW, VH);
   // dynamic tiles: spikes, buttons, gates
@@ -499,6 +564,10 @@ function draw(now) {
   stepParts(dt); drawParts();
   ctx.restore();
   drawMinimap(list, worldW, cam);
+  if (screenMode) for (const p of list) { // arrows for friends who are off screen
+    const sx = p.x - cam, col = (roster.get(p.id) || {}).color || '#fff', y = Math.max(70, Math.min(VH - 60, p.y));
+    if (sx + PW < 0 || sx > VW) { const left = sx < 0, x = left ? 22 : VW - 22; ctx.fillStyle = col; ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + (left ? -14 : 14), y); ctx.lineTo(x + (left ? 8 : -8), y - 13); ctx.lineTo(x + (left ? 8 : -8), y + 13); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = left ? 'left' : 'right'; ctx.fillText(((roster.get(p.id) || {}).nick || ''), left ? 34 : VW - 34, y + 4); ctx.textAlign = 'center'; }
+  }
   // level banner
   const since = now - lvlAt;
   if (since < 7000 && lvlName) {
@@ -515,10 +584,11 @@ function draw(now) {
     ctx.fillStyle = '#ffe066'; ctx.font = `bold ${44 + 6 * k}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.fillText('Level complete!', VW / 2, 262);
     ctx.fillStyle = '#fff'; ctx.font = '16px system-ui,sans-serif'; ctx.fillText(lvlNo && lvlNo < lvlOf ? 'Next level loading...' : 'Last level: back to the start next', VW / 2, 292);
   }
-  $('info').textContent = `${lvlNo ? `Level ${lvlNo}/${lvlOf}: ` : ''}${lvlName}${lvlMin > 1 ? ' (needs ' + lvlMin + '+ players)' : ''} | room ${code} | ${roster.size} player${roster.size === 1 ? '' : 's'}${doorOpen ? ' | door open: everyone in!' : ''}`;
+  $('info').textContent = `${lvlNo ? `Level ${lvlNo}/${lvlOf}: ` : ''}${lvlName}${lvlMin > 1 ? ' (needs ' + lvlMin + '+ players)' : ''} | room ${code} | ${roster.size} ${screenMode ? 'phone' : 'player'}${roster.size === 1 ? '' : 's'}${doorOpen ? ' | door open: everyone in!' : ''}`;
   if (pingSeen) { $('ping').textContent = Math.round(ping) + ' ms'; $('ping').style.color = ping < 80 ? '#7be37b' : ping < 160 ? '#ffd34d' : '#ff7b7b'; }
-  $('restart').style.display = host === me ? '' : 'none';
-  $('lvlSel').disabled = host !== me;
+  $('restart').style.display = host === me || screenMode ? '' : 'none';
+  $('lvlSel').disabled = host !== me && !screenMode;
+  if (screenMode) { const jb = $('joinbox'); if (!roster.size) jb.className = 'big'; else if (!jb.className || jb.className === 'big' && !jb.dataset.seen) { jb.className = 'small'; jb.dataset.seen = 1; } }
 }
 
 // ?auto=1 joins immediately (handy for demos / screenshots)

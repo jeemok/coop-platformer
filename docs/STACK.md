@@ -54,6 +54,7 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
   `ferry`, `lift`, `gate`, `stackKey`, `springKey`) and the door zone. `levels.js` builds the grid, the movers and the key position from
   that list, and the bot tests read the same list to play it. The client scrolls a camera that follows your own player and draws a
   mini-map. Checkpoints (`C` tiles): when anyone touches one, `spawnCol` moves there for everybody (never backwards); it is sent in every snapshot as `c`.
+- **Two modes.** *Remote*: every browser is a player. *One screen*: the shared display joins with `role:'screen'` (watch-only, receives snapshots, may pick levels and restart, is not counted as a player) and phones join as normal players with `role:'pad'` via `/pad`. Pads send unnumbered inputs `{t:'in',l,r,j}` (no prediction needed, the display shows the result) with a 250 ms keep-alive; the server zeroes a pad's input after 1.5 s of silence so a dropped phone does not keep running. A room is deleted only when it has no players and no screens. The QR code uses qrcodejs from cdnjs (text fallback if blocked).
 - **Fixed 60 Hz server clock** driven by real elapsed time (a plain `setInterval` drifts and would cause
   constant prediction corrections). One queued input per tick also stops a client from speeding up.
 - **Rooms** are created on first join by room code, hold up to 10 players, and are deleted when empty.
@@ -112,7 +113,7 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 
 ## Known limits
 
-- Browser client not covered by automated tests; never verified on real phones or other browsers.
+- Browser client not covered by automated tests; never verified on real phones (the pad UI was only checked in headless Chrome) or other browsers.
 - Prediction is exact for solo movement but can snap up to about 23 px when pushing another player
   (we only see them 100 ms in the past).
 - No accounts, no reconnection slot-holding, no kick button, no payments, no sound. (All are in the design doc.)

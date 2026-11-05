@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1b1d2a">
+<title>Controller</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+  html,body{margin:0;height:100%;background:#1b1d2a;color:#eee;font-family:system-ui,sans-serif;overscroll-behavior:none;touch-action:none;overflow:hidden}
+  #join{max-width:380px;margin:0 auto;padding:max(24px,env(safe-area-inset-top)) 20px 20px;touch-action:auto}
+  #join h2{margin:.4em 0}
+  #join input,#join button{width:100%;padding:14px;margin:6px 0;border-radius:12px;border:0;font-size:18px}
+  #join button{background:#4363d8;color:#fff}
+  #err{color:#ff7b7b;min-height:1.3em}
+  #pad{display:none;position:fixed;inset:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  #top{position:absolute;left:0;right:0;top:env(safe-area-inset-top);display:flex;align-items:center;gap:10px;padding:8px 14px;font-size:14px}
+  #dot{width:22px;height:22px;border-radius:50%;border:2px solid #fff}
+  #who{font-weight:700}
+  #lvl{flex:1;text-align:right;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 22px);border-radius:26px;background:rgba(255,255,255,.13);border:3px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:700;color:#fff;touch-action:none}
+  .btn.on{background:rgba(255,255,255,.42);border-color:#fff}
+  #left{left:calc(env(safe-area-inset-left) + 18px);width:min(24vw,34vh + 40px);height:min(44vh,200px)}
+  #right{left:calc(env(safe-area-inset-left) + 18px + min(24vw,34vh + 40px) + 16px);width:min(24vw,34vh + 40px);height:min(44vh,200px)}
+  #jump{right:calc(env(safe-area-inset-right) + 18px);width:min(34vw,60vh);height:min(52vh,240px);border-radius:50%;background:rgba(67,99,216,.35);border-color:#7f9bff;font-size:30px;letter-spacing:.06em}
+  #jump.on{background:rgba(127,155,255,.7)}
+  #msg{position:absolute;left:0;right:0;top:46%;text-align:center;opacity:.55;font-size:15px;pointer-events:none}
+  @media (orientation:portrait){
+    #left,#right{width:30vw;height:30vw;bottom:calc(env(safe-area-inset-bottom) + 24px)}
+    #right{left:calc(env(safe-area-inset-left) + 18px + 30vw + 12px)}
+    #jump{width:34vw;height:34vw;bottom:calc(env(safe-area-inset-bottom) + 24px)}
+  }
+</style></head><body>
+<div id="join">
+  <h2>Controller</h2>
+  <div style="opacity:.75;font-size:15px">Join the game shown on the big screen. Best used with the phone held sideways.</div>
+  <input id="nick" placeholder="Your nickname" maxlength="12" autocomplete="off">
+  <input id="room" placeholder="Room code" maxlength="8" autocapitalize="characters" autocomplete="off">
+  <button id="go">Join</button>
+  <div id="err"></div>
+</div>
+<div id="pad">
+  <div id="top"><span id="dot"></span><span id="who"></span><span id="lvl"></span></div>
+  <div id="msg"></div>
+  <div class="btn" id="left">&#9664;</div>
+  <div class="btn" id="right">&#9654;</div>
+  <div class="btn" id="jump">JUMP</div>
+</div>
+<script>
+const $ = id => document.getElementById(id), params = new URLSearchParams(location.search);
+$('room').value = (params.get('room') || '').toUpperCase();
+$('nick').value = localStorage.getItem('nick') || '';
+const inp = { l: 0, r: 0, j: 0 };
+let ws, me = null, sent = '', timer = 0;
+const send = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'in', l: inp.l, r: inp.r, j: inp.j })); };
+function changed() { const k = `${inp.l}${inp.r}${inp.j}`; if (k !== sent) { sent = k; send(); } }
+
+// multi-touch buttons: every finger is tracked by pointer id, so you can hold right + jump together
+const held = { left: new Set(), right: new Set(), jump: new Set() };
+for (const [id, key] of [['left', 'l'], ['right', 'r'], ['jump', 'j']]) {
+  const el = $(id);
+  const refresh = () => { inp[key] = held[id].size ? 1 : 0; el.classList.toggle('on', !!inp[key]); changed(); };
+  el.addEventListener('pointerdown', e => { e.preventDefault(); el.setPointerCapture(e.pointerId); held[id].add(e.pointerId); if (navigator.vibrate) navigator.vibrate(8); refresh(); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(ev, e => { held[id].delete(e.pointerId); refresh(); });
+}
+// a finger that slides from LEFT to RIGHT should switch direction: handle moves on the pad area
+const dirs = ['left', 'right'];
+addEventListener('pointermove', e => {
+  if (!ws) return;
+  for (const id of dirs) { const r = $(id).getBoundingClientRect(), inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top - 30 && e.clientY <= r.bottom + 30; const other = id === 'left' ? 'right' : 'left';
+    if (held[other].has(e.pointerId) && inside) { held[other].delete(e.pointerId); held[id].add(e.pointerId); inp.l = held.left.size ? 1 : 0; inp.r = held.right.size ? 1 : 0; $('left').classList.toggle('on', !!inp.l); $('right').classList.toggle('on', !!inp.r); changed(); } }
+}, { passive: true });
+// keyboard too (handy for testing on a laptop)
+const map = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j' };
+addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; const k = map[e.code]; if (k) { e.preventDefault(); inp[k] = 1; changed(); } });
+addEventListener('keyup', e => { const k = map[e.code]; if (k) { inp[k] = 0; changed(); } });
+for (const ev of ['contextmenu', 'gesturestart', 'dblclick']) addEventListener(ev, e => { if (ws) e.preventDefault(); });
+addEventListener('blur', () => { inp.l = inp.r = inp.j = 0; changed(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { inp.l = inp.r = inp.j = 0; changed(); } });
+
+function join() {
+  const nick = $('nick').value.trim() || 'Player', room = $('room').value.trim().toUpperCase();
+  if (!room) { $('err').textContent = 'Enter the room code shown on the big screen'; return; }
+  localStorage.setItem('nick', nick);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room, nick, role: 'pad' }));
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'err') { $('err').textContent = m.m; ws.close(); ws = null; }
+    else if (m.t === 'welcome') {
+      me = m.id; $('join').style.display = 'none'; $('pad').style.display = 'block'; $('who').textContent = nick;
+      timer = setInterval(send, 250); // keep-alive: the server stops a player whose phone goes quiet
+      try { navigator.wakeLock && navigator.wakeLock.request('screen'); } catch (e) {}
+      try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); } catch (e) {}
+      try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
+    } else if (m.t === 'lvl') { $('lvl').textContent = `Level ${m.n}/${m.of}: ${m.name.replace(/^\d+\.\s*/, '')}`; }
+    else if (m.t === 'roster') { const p = m.p.find(q => q.id === me); if (p) $('dot').style.background = p.color; $('msg').textContent = m.scr ? '' : 'No big screen is connected to this room'; }
+  };
+  ws.onclose = () => { clearInterval(timer); if ($('pad').style.display === 'block') { $('msg').textContent = 'Disconnected. Tap to rejoin'; $('msg').style.pointerEvents = 'auto'; $('msg').onclick = () => location.reload(); } };
+}
+$('go').onclick = join;
+if (params.get('room') && $('nick').value) { /* returning player: still wait for a tap (browsers need a gesture for fullscreen) */ }
+</script></body></html>

@@ -29,6 +29,37 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   check('the host can switch level and everyone gets it', () => { assert.deepStrictEqual(a.lvls, [5, 8]); assert.deepStrictEqual(b.lvls, [5, 8]); });
   a.ws.send(JSON.stringify({ t: 'go', l: 99 })); a.ws.send(JSON.stringify({ t: 'go', l: -1 })); a.ws.send(JSON.stringify({ t: 'go', l: 'x' })); await sleep(200);
   check('out-of-range level requests are ignored', () => assert.deepStrictEqual(a.lvls, [5, 8]));
+  console.log('One-screen mode (big screen + phone controllers):');
+  function node(room, role, nick, level) {
+    const c = { snaps: [], lvls: [], roster: null, err: null, id: null, ws: new WebSocket('ws://127.0.0.1:' + PORT) };
+    c.ws.on('open', () => c.ws.send(JSON.stringify({ t: 'join', room, nick, role, level })));
+    c.ws.on('message', d => { const m = JSON.parse(d); if (m.t === 's') c.snaps.push(m); else if (m.t === 'lvl') c.lvls.push(m.n); else if (m.t === 'roster') c.roster = m; else if (m.t === 'err') c.err = m.m; else if (m.t === 'welcome') c.id = m; });
+    return c;
+  }
+  const scr = node('PARTY', 'screen', 'screen', 2); await sleep(250);
+  check('a screen creates the room on the chosen level and is not a player', () => { assert.deepStrictEqual(scr.lvls, [3]); assert.strictEqual(scr.roster.p.length, 0); assert.strictEqual(scr.id.screen, 1); });
+  const pad1 = node('PARTY', 'pad', 'ann'); const pad2 = node('PARTY', 'pad', 'bob'); await sleep(300);
+  check('phones join as players and the screen sees them', () => { assert.strictEqual(scr.roster.p.length, 2); assert.strictEqual(pad1.roster.scr, 1); });
+  const posOf = (c, id) => { const m = c.snaps[c.snaps.length - 1]; return m && m.p.find(e => e[0] === id); };
+  const x0 = posOf(scr, pad1.id.id)[1];
+  pad1.ws.send(JSON.stringify({ t: 'in', l: 0, r: 1, j: 0 })); await sleep(600);
+  const x1 = posOf(scr, pad1.id.id)[1];
+  check('a phone pressing "right" moves its player on the screen (unnumbered inputs)', () => assert(x1 > x0 + 40, `moved ${x1 - x0}px`));
+  await sleep(1700); const x2 = posOf(scr, pad1.id.id)[1]; await sleep(400);
+  check('a phone that goes quiet stops its player after ~1.5 s (no runaway character)', () => assert(Math.abs(posOf(scr, pad1.id.id)[1] - x2) < 1, 'player kept running'));
+  scr.ws.send(JSON.stringify({ t: 'go', l: 4 })); await sleep(250);
+  check('the screen can switch level for everyone', () => { assert.strictEqual(scr.lvls[scr.lvls.length - 1], 5); assert.strictEqual(pad2.lvls[pad2.lvls.length - 1], 5); });
+  scr.ws.send(JSON.stringify({ t: 'in', l: 0, r: 1, j: 0 })); await sleep(150);
+  check('a screen cannot play (its inputs are ignored)', () => assert.strictEqual(scr.roster.p.length, 2));
+  const extra = []; for (let i = 0; i < 9; i++) extra.push(node('PARTY', 'pad', 'p' + i)); await sleep(400);
+  const eleventh = node('PARTY', 'pad', 'late'); const scr2 = node('PARTY', 'screen', 's2'); await sleep(300);
+  check('10 phones fit, the 11th is refused, and a second screen can still watch a full room', () => { assert(eleventh.err && /full/i.test(eleventh.err), 'no full error'); assert(!scr2.err && scr2.id && scr2.id.screen, 'second screen refused'); });
+  for (const c of [scr, pad1, pad2, scr2, eleventh, ...extra]) c.ws.close();
+  await sleep(200);
+  const solo = node('GONE', 'screen', 's'); await sleep(200); solo.ws.close(); await sleep(200);
+  const again = node('GONE', 'pad', 'x'); await sleep(200);
+  check('a room whose last screen leaves is removed (a new join starts fresh on level 1)', () => assert.deepStrictEqual(again.lvls, [1]));
+  again.ws.close();
   console.log(`\n${ok} checks passed${process.exitCode ? ' (with FAILURES)' : ''}`);
   srv.kill(); process.exit(process.exitCode || 0);
 })();

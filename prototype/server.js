@@ -13,7 +13,7 @@ const DT = 1 / 60, MAX_QUEUE = 30, IDLE_TICKS = 30, STARVE_TICKS = 6, ZERO = { l
 
 class Room {
   constructor(code, startLevel) {
-    this.code = code; this.sim = new Sim([]); this.players = this.sim.players; this.tick = 0; this.load(startLevel == null ? START_LEVEL : startLevel);
+    this.code = code; this.screens = new Set(); this.sim = new Sim([]); this.players = this.sim.players; this.tick = 0; this.load(startLevel == null ? START_LEVEL : startLevel);
   }
   get grid() { return this.sim.grid; }
   solid(tx, ty) { return this.sim.solid(tx, ty); }
@@ -44,8 +44,8 @@ class Room {
     // never respawn inside someone: drop in from above onto their head instead
     for (let n = 0; n < 40 && [...this.players.values()].some(o => o !== p && !o.dead && ov(box(p), box(o))); n++) p.y -= PH;
   }
-  send(m, except) { const s = JSON.stringify(m); for (const p of this.players.values()) if (p !== except && p.ws.readyState === 1) p.ws.send(s); }
-  roster() { this.send({ t: 'roster', host: this.players.keys().next().value, p: [...this.players.values()].map(p => ({ id: p.id, nick: p.nick, color: COLORS[p.slot] })) }); }
+  send(m, except) { const s = JSON.stringify(m); for (const p of this.players.values()) if (p !== except && p.ws.readyState === 1) p.ws.send(s); for (const w of this.screens) if (w.readyState === 1) w.send(s); } // (screens = big displays in one-screen mode: they watch, they are not players)
+  roster() { this.send({ t: 'roster', scr: this.screens.size, host: this.players.keys().next().value, p: [...this.players.values()].map(p => ({ id: p.id, nick: p.nick, color: COLORS[p.slot] })) }); }
 
   // Client inputs are numbered and queued; exactly one is consumed per server tick, so the server's
   // result depends only on the input sequence (not on packet timing) and a client cannot run fast.
@@ -54,7 +54,7 @@ class Room {
       p.usesQueue = true;
       if (p.queue.length >= MAX_QUEUE) p.queue.shift();
       p.queue.push({ s: m.s | 0, l: m.l ? 1 : 0, r: m.r ? 1 : 0, j: m.j ? 1 : 0 });
-    } else p.input = { l: m.l ? 1 : 0, r: m.r ? 1 : 0, j: m.j ? 1 : 0 }; // legacy: unnumbered (bots/tests)
+    } else { p.input = { l: m.l ? 1 : 0, r: m.r ? 1 : 0, j: m.j ? 1 : 0 }; p.lastIn = Date.now(); } // unnumbered: phone controllers, bots/tests
   }
   // Per tick a player normally advances by exactly ONE queued input, so the server's result depends on
   // the input sequence, not on packet timing (the client's replay matches). Two jitter cases:
@@ -64,7 +64,7 @@ class Room {
   //    credit bucket (~10% extra speed sustained) so nobody can speed-hack by flooding inputs.
   consumeInputs() {
     for (const p of this.players.values()) {
-      if (!p.usesQueue) { p.todo = [p.input]; continue; }
+      if (!p.usesQueue) { if (p.pad && Date.now() - p.lastIn > 1500) p.input = ZERO; p.todo = [p.input]; continue; } // a phone that went quiet must not keep running
       let n = p.queue.length > 3 && p.credit >= 1 ? 2 : 1;
       if (n === 2) p.credit -= 1;
       p.credit = Math.min(12, p.credit + 0.1);
@@ -119,10 +119,10 @@ class Room {
     this.send({ t: 's', p: [...this.players.values()].map(p => [p.id, r2(p.x), r2(p.y), p.dead ? 1 : 0, Math.round(p.vy), p.onGround ? 1 : 0, p.ack]),
       k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], pt: this.pt, c: this.spawnCol, d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0 });
   }
-  add(ws, nick) {
+  add(ws, nick, pad) {
     const used = new Set([...this.players.values()].map(p => p.slot));
     let slot = 0; while (used.has(slot)) slot++;
-    const p = { id: ++nextId, ws, nick, slot, input: { l: 0, r: 0, j: 0 }, queue: [], todo: [], credit: 12, ack: 0, idle: 0, usesQueue: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, onGround: false };
+    const p = { id: ++nextId, ws, nick, slot, input: { l: 0, r: 0, j: 0 }, queue: [], todo: [], credit: 12, ack: 0, idle: 0, usesQueue: false, pad: !!pad, lastIn: 0, x: 0, y: 0, vx: 0, vy: 0, dead: 0, onGround: false };
     this.players.set(p.id, p); this.spawn(p); return p;
   }
   remove(p) {
@@ -134,7 +134,7 @@ let nextId = 0;
 const rooms = new Map();
 
 const LEVEL_LIST = JSON.stringify(LEVELS.map(l => ({ name: l.name, min: l.min })));
-const STATIC = { '/': ['public/index.html', 'text/html'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
+const STATIC = { '/': ['public/index.html', 'text/html'], '/pad': ['public/pad.html', 'text/html'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   if (url === '/levels.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(LEVEL_LIST); }
@@ -159,25 +159,30 @@ wss.on('connection', ws => {
         const lv = Number.isInteger(m.level) && m.level >= 0 && m.level < LEVELS.length ? m.level : undefined; // creator picks the start level
         r = new Room(code, lv); rooms.set(code, r);
       }
-      if (r.players.size >= MAX_PLAYERS) return ws.send(JSON.stringify({ t: 'err', m: `Room full (max ${MAX_PLAYERS})` }));
-      room = r; me = r.add(ws, String(m.nick || 'Player').slice(0, 12));
+      room = r;
+      if (m.role === 'screen') { // one-screen mode: this connection only watches (and can pick levels); phones join as players
+        me = { screen: true }; r.screens.add(ws);
+        ws.send(JSON.stringify({ t: 'welcome', id: 0, code, screen: 1 })); ws.send(JSON.stringify(r.lvlMsg())); r.roster(); return;
+      }
+      if (r.players.size >= MAX_PLAYERS) { room = null; return ws.send(JSON.stringify({ t: 'err', m: `Room full (max ${MAX_PLAYERS})` })); }
+      me = r.add(ws, String(m.nick || 'Player').slice(0, 12), m.role === 'pad');
       ws.send(JSON.stringify({ t: 'welcome', id: me.id, code }));
       ws.send(JSON.stringify(r.lvlMsg()));
       r.roster();
     } else if (m.t === 'ping') {
       ws.send(JSON.stringify({ t: 'pong', c: m.c }));
     } else if (m.t === 'in') {
-      room.onInput(me, m);
-    } else if (m.t === 'go' && room.players.keys().next().value === me.id) { // host picks a level
+      if (!me.screen) room.onInput(me, m);
+    } else if (m.t === 'go' && (me.screen || room.players.keys().next().value === me.id)) { // host picks a level
       if (Number.isInteger(m.l) && m.l >= 0 && m.l < LEVELS.length) room.load(m.l);
-    } else if (m.t === 'restart' && room.players.keys().next().value === me.id) {
+    } else if (m.t === 'restart' && (me.screen || room.players.keys().next().value === me.id)) {
       room.load(room.li);
     }
   });
   ws.on('close', () => {
     if (!room) return;
-    room.remove(me);
-    if (room.players.size === 0) rooms.delete(room.code);
+    if (me.screen) room.screens.delete(ws); else room.remove(me);
+    if (room.players.size === 0 && room.screens.size === 0) rooms.delete(room.code);
   });
 });
 
