@@ -18,14 +18,15 @@ class Room {
   get grid() { return this.sim.grid; }
   solid(tx, ty) { return this.sim.solid(tx, ty); }
   load(i) {
-    this.li = i % LEVELS.length;
-    const L = LEVELS[this.li];
+    const L = typeof i === 'object' ? i : LEVELS[i % LEVELS.length]; // (an object = a test fixture level)
+    this.li = typeof i === 'object' ? 0 : i % LEVELS.length;
     this.level = L; this.sim.setGrid(L.grid);
-    this.doors = []; this.spikes = []; this.buttons = []; this.gates = []; this.gateT = 0; this.sim.gateOpen = false;
+    this.doors = []; this.spikes = []; this.buttons = []; this.gates = []; this.cps = []; this.spawnCol = +process.env.SPAWN_COL || L.spawn.x; // (SPAWN_COL: dev only, start further along) this.gateT = 0; this.sim.gateOpen = false;
     L.grid.forEach((row, ty) => [...row].forEach((c, tx) => {
       if (c === 'D') this.doors.push({ x: tx * TILE, y: ty * TILE, w: TILE, h: TILE });
       if (c === 'B') this.buttons.push({ x: tx * TILE + 2, y: ty * TILE + 18, w: TILE - 4, h: TILE - 18 });
       if (c === 'G') this.gates.push({ x: tx * TILE, y: ty * TILE, w: TILE, h: TILE });
+      if (c === 'C') this.cps.push({ x: tx * TILE + 8, y: ty * TILE, w: TILE - 16, h: TILE, col: tx - 10 }); // checkpoint flag: respawns move here
       if (c === '^') this.spikes.push({ x: tx * TILE + 6, y: ty * TILE + 16, w: TILE - 12, h: TILE - 16 });
     }));
     this.home = { x: L.key.x * TILE + 6, y: L.key.y * TILE + 6 };
@@ -37,7 +38,7 @@ class Room {
   }
   lvlMsg() { const L = this.level; return { t: 'lvl', name: L.name, min: L.min, hint: L.hint, n: this.li + 1, of: LEVELS.length, grid: L.grid, mv: L.movers }; }
   spawn(p) {
-    const sp = this.level.spawn;
+    const sp = { x: this.spawnCol, y: this.level.spawn.y };
     p.x = sp.x * TILE + p.slot * (PW + 2); p.y = (sp.y + 1) * TILE - PH - 1;
     p.vx = p.vy = 0; p.dead = 0; p.onGround = false;
     // never respawn inside someone: drop in from above onto their head instead
@@ -96,6 +97,7 @@ class Room {
       if (alive.some(p => this.gates.some(g => ov(box(p), g)))) this.gateT = Math.max(this.gateT, 0.6);
       this.sim.gateOpen = this.gateT > 0;
     }
+    for (const c of this.cps) if (c.col > this.spawnCol && alive.some(p => ov(box(p), c))) this.spawnCol = c.col; // reached a checkpoint
     const k = this.key;
     if (!k.gone) {
       if (k.holder == null) {
@@ -115,7 +117,7 @@ class Room {
   snap() {
     const r2 = v => Math.round(v * 100) / 100;
     this.send({ t: 's', p: [...this.players.values()].map(p => [p.id, r2(p.x), r2(p.y), p.dead ? 1 : 0, Math.round(p.vy), p.onGround ? 1 : 0, p.ack]),
-      k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], pt: this.pt, d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0 });
+      k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], pt: this.pt, c: this.spawnCol, d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0 });
   }
   add(ws, nick) {
     const used = new Set([...this.players.values()].map(p => p.slot));

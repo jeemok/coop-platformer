@@ -1,11 +1,12 @@
 // Headless checks of the physics assumptions the level design relies on.
 const assert = require('assert');
 const { Room, PH, TILE } = require('./server');
+const CLASSIC = require('./levels-classic').LEVELS;
 const fake = () => ({ readyState: 0, send() {} });
 
 function run(room, ticks, cb) { for (let i = 0; i < ticks; i++) { cb && cb(i); room.update(1 / 60); } }
 function setup(levelIdx, n) {
-  const r = new Room('T'); r.load(levelIdx);
+  const r = new Room('T'); r.load(CLASSIC[levelIdx]);
   const ps = []; for (let i = 0; i < n; i++) ps.push(r.add(fake(), 'p' + i));
   return { r, ps };
 }

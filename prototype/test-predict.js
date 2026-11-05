@@ -3,6 +3,7 @@
 const assert = require('assert');
 const { Room } = require('./server');
 const Predictor = require('./predict');
+const CLASSIC = require('./levels-classic').LEVELS;
 
 const DT = 1 / 60, TICK_MS = 1000 / 60;
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -16,7 +17,7 @@ const script = t => ({
 
 function simulate({ up, down, jitter, blocker = false, seed = 1, ticks = 520, level = 0, onPlat = false, keys = script }) {
   const rand = rng(seed);
-  const room = new Room('P'); room.load(level);
+  const room = new Room('P'); room.load(CLASSIC[level]);
   let tick = 0, lastUp = 0, lastDown = 0;
   const toServer = [], toClient = [];
   const delay = base => Math.max(1, base + Math.floor(rand() * (2 * jitter + 1)) - jitter);

@@ -42,6 +42,7 @@ $('nick').value = params.get('nick') || localStorage.getItem('nick') || '';
 let ws, me, code, grid = [], lvlName = '', lvlMin = 1, lvlHint = '', lvlNo = 0, lvlOf = 0, lvlAt = 0, roster = new Map(), host = null;
 const pred = new Predictor();      // our own player: predicted locally, corrected by the server
 const remote = new Map();          // other players: id -> { samples: [{t,x,y}], dead }  (interpolated)
+let camX = null, spawnCol = 1;      // camera (world px of the left screen edge) and the current respawn column
 let key = null, doorOpen = false, win = false, winAt = 0, gateT = 0, ping = 0, pingSeen = false;
 const inp = { l: 0, r: 0, j: 0 };
 
@@ -92,7 +93,7 @@ $('go').onclick = () => {
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
     else if (m.t === 'welcome') { me = m.id; code = m.code; history.replaceState(null, '', '?room=' + code); $('join').style.display = 'none'; $('game').style.display = 'block'; resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
     else if (m.t === 'pong') { const rtt = performance.now() - m.c; ping = pingSeen ? ping * 0.7 + rtt * 0.3 : rtt; pingSeen = true; }
-    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
+    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; camX = null; spawnCol = 1; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
     else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
     else if (m.t === 's') {
       const now = performance.now();
@@ -109,7 +110,8 @@ $('go').onclick = () => {
       if (hadKey && !key) { /* key used on the door */ }
       if (m.d && !doorOpen) { sfx.door(); const d = doorRect(); if (d) confetti(d.x + d.w / 2, d.y + d.h / 2, 40); }
       doorOpen = !!m.d;
-      if (m.w && !win) { win = true; winAt = now; sfx.win(); confetti(VW / 2, 120, 90); } else if (!m.w) win = false;
+      if (m.w && !win) { win = true; winAt = now; sfx.win(); confetti((camX || 0) + VW / 2, 120, 90); } else if (!m.w) win = false;
+      if (m.c != null) spawnCol = m.c;
       const g = m.g || 0; if (g > 0 && gateT <= 0) sfx.gate(); gateT = g; pred.setGate(g > 0);
     }
   };
@@ -154,7 +156,7 @@ const parts = [];         // particles
 
 const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 function shade(hex, f) { const n = parseInt(hex.slice(1), 16); const c = k => Math.max(0, Math.min(255, Math.round(((n >> k) & 255) * f))); return `rgb(${c(16)},${c(8)},${c(0)})`; }
-const isSolid = (tx, ty) => tx >= 0 && tx < 40 && ty >= 0 && ty < grid.length && grid[ty][tx] === '#';
+const isSolid = (tx, ty) => tx >= 0 && tx < (grid[0] ? grid[0].length : 0) && ty >= 0 && ty < grid.length && grid[ty][tx] === '#';
 
 function doorRect() {
   let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
@@ -162,20 +164,26 @@ function doorRect() {
   return x1 < 0 ? null : { x: x0 * T, y: y0 * T, w: (x1 - x0 + 1) * T, h: (y1 - y0 + 1) * T };
 }
 
-// static backdrop (sky, sun, hills) drawn once
+// static backdrop: sky + sun (fixed), and three hill layers that tile horizontally and scroll at different speeds (parallax)
+const hillLayers = [];
 function buildBackdrop() {
   bgCanvas = document.createElement('canvas'); bgCanvas.width = VW; bgCanvas.height = VH; const g = bgCanvas.getContext('2d');
   const sky = g.createLinearGradient(0, 0, 0, VH); sky.addColorStop(0, '#5cb8f0'); sky.addColorStop(0.7, '#b6e6ff'); sky.addColorStop(1, '#e9f8ff');
   g.fillStyle = sky; g.fillRect(0, 0, VW, VH);
   const sun = g.createRadialGradient(1080, 90, 6, 1080, 90, 150); sun.addColorStop(0, 'rgba(255,248,200,1)'); sun.addColorStop(0.18, 'rgba(255,240,170,.95)'); sun.addColorStop(1, 'rgba(255,240,170,0)');
   g.fillStyle = sun; g.fillRect(780, 0, 500, 300);
-  const hills = (base, amp, f, ph, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(0, VH); for (let x = 0; x <= VW; x += 8) g.lineTo(x, base + Math.sin(x * f + ph) * amp + Math.sin(x * f * 2.3 + ph * 2) * amp * 0.4); g.lineTo(VW, VH); g.fill(); };
-  hills(330, 34, 0.006, 1, '#9fd8c0'); hills(370, 28, 0.009, 4, '#7cc7a4'); hills(405, 18, 0.012, 2, '#5fb38d');
+  const K = 2 * Math.PI / VW; // every wave has a whole number of periods across the canvas, so the layer tiles seamlessly
+  for (const [base, amp, k1, k2, ph, col, par] of [[330, 34, 3, 7, 1, '#9fd8c0', 0.12], [370, 28, 4, 9, 4, '#7cc7a4', 0.25], [405, 18, 6, 13, 2, '#5fb38d', 0.45]]) {
+    const c = document.createElement('canvas'); c.width = VW; c.height = VH; const h = c.getContext('2d');
+    h.fillStyle = col; h.beginPath(); h.moveTo(0, VH);
+    for (let x = 0; x <= VW; x += 8) h.lineTo(x, base + Math.sin(x * K * k1 + ph) * amp + Math.sin(x * K * k2 + ph * 2) * amp * 0.4);
+    h.lineTo(VW, VH); h.fill(); hillLayers.push({ c, par });
+  }
 }
 // static tiles drawn once per level
 function buildLevel() {
   if (!bgCanvas) buildBackdrop();
-  tileCanvas = document.createElement('canvas'); tileCanvas.width = VW; tileCanvas.height = VH; const g = tileCanvas.getContext('2d');
+  tileCanvas = document.createElement('canvas'); tileCanvas.width = Math.max(VW, grid[0].length * T); tileCanvas.height = VH; const g = tileCanvas.getContext('2d');
   grid.forEach((row, ty) => [...row].forEach((c, tx) => {
     const x = tx * T, y = ty * T;
     if (c === 'S') { // spring pad
@@ -265,6 +273,24 @@ function drawSaw(h, t) { // h = hazard {x,y,w,h,d}: rail from A to B, spinning b
   ctx.strokeStyle = '#4d5563'; ctx.lineWidth = 1.5; ctx.stroke();
   ctx.fillStyle = '#e04646'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 7); ctx.fill(); ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, 7); ctx.fill();
   ctx.restore();
+}
+function drawFlag(x, y, on, t) { // checkpoint: grey until someone touches it, then everyone respawns here
+  ctx.fillStyle = '#d9dee6'; ctx.fillRect(x + 14, y - 22, 3, T + 22);
+  const wave = Math.sin(t * 5) * (on ? 2.5 : 0.8);
+  ctx.fillStyle = on ? '#58d68d' : '#8a93a3'; ctx.beginPath(); ctx.moveTo(x + 17, y - 21); ctx.quadraticCurveTo(x + 27, y - 24 + wave, x + 36, y - 16 + wave); ctx.quadraticCurveTo(x + 27, y - 12 - wave, x + 17, y - 8); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + 15.5, y - 23, 3, 0, 7); ctx.fill();
+  if (on) { ctx.fillStyle = 'rgba(88,214,141,.18)'; ctx.beginPath(); ctx.ellipse(x + 16, y + T - 2, 16, 4, 0, 0, 7); ctx.fill(); }
+}
+// the level is much wider than the screen: a thin map along the bottom shows everyone, the key, checkpoints, the door and the screen
+function drawMinimap(list, worldW, cam) {
+  const mx = 40, mw = VW - 80, my = VH - 16, sx = mw / worldW;
+  ctx.fillStyle = 'rgba(15,17,28,.62)'; ctx.beginPath(); ctx.roundRect(mx - 8, my - 9, mw + 16, 18, 9); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(mx, my - 1, mw, 2);
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.strokeRect(mx + cam * sx, my - 6, VW * sx, 12);
+  for (let ty = 0; ty < grid.length; ty++) for (let tx = 0; tx < grid[ty].length; tx++) if (grid[ty][tx] === 'C') { ctx.fillStyle = spawnCol >= tx - 10 ? '#58d68d' : '#9aa3b5'; ctx.fillRect(mx + tx * T * sx - 1, my - 5, 2, 10); }
+  const d = doorRect(); if (d) { ctx.fillStyle = doorOpen ? '#58d68d' : '#c98a4b'; ctx.fillRect(mx + d.x * sx, my - 5, Math.max(4, d.w * sx), 10); }
+  if (key) { ctx.fillStyle = '#ffd34d'; ctx.beginPath(); ctx.arc(mx + (key[0] + 10) * sx, my, 4, 0, 7); ctx.fill(); }
+  for (const p of list) { ctx.fillStyle = p.local ? '#fff' : ((roster.get(p.id) || {}).color || '#ccc'); ctx.beginPath(); ctx.arc(mx + (p.x + PW / 2) * sx, my, p.local ? 4 : 3, 0, 7); ctx.fill(); if (p.local) { ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.stroke(); } }
 }
 function drawKey(x, y, held, t) { // (x,y) is the centre
   const bob = held ? 0 : Math.sin(t * 3) * 3, rot = held ? Math.sin(t * 6) * 0.12 - 0.5 : Math.sin(t * 2) * 0.15 - 0.6;
@@ -427,22 +453,31 @@ function frame(now) {
 function draw(now) {
   const dt = Math.min(0.1, (now - lastDraw) / 1000) || 0.016; lastDraw = now; const t = now / 1000;
   ctx.setTransform(SC, 0, 0, SC, 0, 0);
+  // camera: follow our own player (a little ahead of the way we face), clamped to the level
+  const worldW = (grid[0] ? grid[0].length : 40) * T;
+  if (pred.ready) { const rp = pred.renderPos(); const want = Math.max(0, Math.min(worldW - VW, rp.x + PW / 2 - VW / 2 + (inp.r - inp.l) * 70)); camX = camX == null ? want : camX + (want - camX) * Math.min(1, dt * 6); }
+  else if (camX == null) camX = 0;
+  const cam = Math.round(camX);
   if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0); else ctx.clearRect(0, 0, VW, VH);
+  for (const hl of hillLayers) { const ox = -((camX * hl.par) % VW + VW) % VW; ctx.drawImage(hl.c, ox, 0); ctx.drawImage(hl.c, ox + VW, 0); }
   drawClouds(t);
+  ctx.save(); ctx.translate(-cam, 0);
   const door = doorRect();
   doorAnim += ((doorOpen ? 1 : 0) - doorAnim) * Math.min(1, dt * 6);
   gateAnim += ((gateT > 0 ? 1 : 0) - gateAnim) * Math.min(1, dt * 7);
   const list = layout(now);
   if (door) { let inside = 0; for (const p of list) if (p.x < door.x + door.w && p.x + PW > door.x && p.y < door.y + door.h && p.y + PH > door.y) inside++; drawDoor(door, doorAnim, t, inside, roster.size); }
-  if (tileCanvas) ctx.drawImage(tileCanvas, 0, 0);
+  if (tileCanvas) ctx.drawImage(tileCanvas, cam, 0, VW, VH, cam, 0, VW, VH);
   // dynamic tiles: spikes, buttons, gates
   const gates = new Map();
-  grid.forEach((row, ty) => [...row].forEach((c, tx) => {
-    const x = tx * T, y = ty * T;
+  const tx0 = Math.max(0, Math.floor(cam / T) - 1), tx1 = Math.min((grid[0] ? grid[0].length : 0) - 1, tx0 + VW / T + 3);
+  for (let ty = 0; ty < grid.length; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    const c = grid[ty][tx], x = tx * T, y = ty * T;
     if (c === '^') drawSpike(x, y);
     else if (c === 'B') drawButton(x, y, gateT > 0);
+    else if (c === 'C') drawFlag(x, y, spawnCol >= tx - 10, t);
     else if (c === 'G') { const gc = gates.get(tx); if (!gc) gates.set(tx, { tx, y0: ty, y1: ty }); else gc.y1 = ty; }
-  }));
+  }
   for (const gateCol of gates.values()) {
     const flicker = gateT > 0 && gateT < 1 && Math.floor(t * 8) % 2 === 0;
     drawGate(gateCol.tx, gateCol.y0, gateCol.y1, flicker ? Math.max(0, gateAnim - 0.5) : gateAnim, t);
@@ -462,6 +497,8 @@ function draw(now) {
   }
   for (const p of list) drawPlayer(p, dt, now);
   stepParts(dt); drawParts();
+  ctx.restore();
+  drawMinimap(list, worldW, cam);
   // level banner
   const since = now - lvlAt;
   if (since < 7000 && lvlName) {

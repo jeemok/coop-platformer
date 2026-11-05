@@ -1,112 +1,172 @@
-// THROWAWAY PROTOTYPE. Original levels (not from Pico Park).
-// Legend: '#' solid, '^' spike, 'D' door tile, '.' empty
-// Rule for level design: a stack is only ever needed to reach the KEY, which sits on a
-// FLOATING platform (ground stays free underneath). Never gate the path to the door behind
-// a climb the last player cannot make, or the level becomes unwinnable.
-const TILE = 32, W = 40, H = 16;
-
-function make() { return Array.from({ length: H }, () => Array(W).fill('.')); }
-function rect(g, x, y, w, h, c) {
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) g[y + j][x + i] = c;
-}
-// Movers follow a fixed cycle (see Sim.moverPos): rest at A, glide to B, rest at B, glide back. Positions in px.
-// plat(col, topY, widthTiles, travelXTiles, travelYpx): a 14 px thick platform that carries whoever stands on it.
+// THROWAWAY PROTOTYPE. The campaign: long, hard levels built from reusable SEGMENTS (original design, not from Pico Park).
+// Legend: '#' solid, '^' spike, 'D' door, 'B' button, 'G' gate, 'S' spring, 'C' checkpoint flag, '.' empty.
+// A level is: a start zone, a list of segments laid end to end, then the door zone. Each segment draws its own terrain and
+// movers and records what it is (`segs`), so the bot tests can play any level by walking its segments in order.
+//
+// Rules the bot tests enforce (see docs/STACK.md): the whole room (up to 10) must be able to finish with no deaths when
+// everyone plays well. Difficulty comes from length, timing, hazard density and coordination, not from impossible jumps.
+const TILE = 32, H = 16, START = 12, REST_W = 11, DOOR_ZONE = 12;
 const THICK = 14;
+
+function make(w) { return Array.from({ length: H }, () => Array(w).fill('.')); }
+function rect(g, x, y, w, h, c) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) g[y + j][x + i] = c; }
 const plat = (col, y, w, ax, ay, o = {}) => ({ kind: 'plat', x: col * TILE, y, w: w * TILE, h: THICK, ax: ax * TILE, ay, move: o.move || 3, dwellA: o.dwellA ?? 2, dwellB: o.dwellB ?? 2, phase: o.phase || 0 });
-// saw(col, yTop, yBottom): a blade on a vertical rail (22 px hitbox), kills on touch
 const saw = (col, y0, y1, o = {}) => ({ kind: 'saw', x: col * TILE + 5, y: y0, w: 22, h: 22, ax: 0, ay: y1 - y0, move: o.move || 1.1, dwellA: o.dwellA ?? 1.8, dwellB: o.dwellB ?? 1, phase: o.phase || 0 });
 
-function lvl(name, min, key, hint, draw, opts = {}) {
-  const g = make();
-  rect(g, 0, 13, W, 3, '#'); // ground
-  draw(g);
-  rect(g, 31, 10, 8, 3, 'D'); // door: wide enough for 10 players to all touch it at once
-  return { name, min, hint, movers: opts.movers || [], gateTime: opts.gateTime || 4, spawn: { x: 1, y: 12 }, key, grid: g.map(r => r.join('')) };
+// ---- segment constructors: each returns { type, w, ...params, build(g, x0, movers) -> key|undefined } ----
+// terrain: ordinary platforming. feats: ['spike',c,n] ['pit',c,n] ['wall',c,width,height]; opts.key = column of a key lying on the ground
+// The first hazard is always 8+ tiles in: a pack of 10 arriving behind you shoves you forward by up to ~7 tiles.
+const LEAD = 8;
+const terrain = (w, feats, opts = {}) => ({ type: 'terrain', w: w + LEAD, key: opts.key, build(g, x0) {
+  x0 += LEAD;
+  for (const [k, c, a, b] of feats) {
+    if (k === 'spike') rect(g, x0 + c, 12, a, 1, '^');
+    else if (k === 'pit') rect(g, x0 + c, 13, a, 3, '.');
+    else if (k === 'wall') rect(g, x0 + c, 13 - b, a, b, '#');
+  }
+  if (opts.key != null) return { x: x0 + opts.key, y: 12 };
+} });
+// rest: flat ground and a checkpoint flag. After someone touches the flag, everyone respawns here.
+const rest = () => ({ type: 'rest', w: REST_W, build(g, x0) { g[12][x0 + REST_W - 1] = 'C'; } });
+// saws: vertical saw lanes, 10 tiles apart; the pack waits for the blades to rise, then runs through
+const saws = (n, o = {}) => ({ type: 'saws', w: 10 * n + 4, n, build(g, x0, mv) {
+  for (let i = 0; i < n; i++) mv.push(saw(x0 + 10 * i + 10, o.y0 ?? 322, 394, { move: o.move, dwellA: o.dwellA, dwellB: o.dwellB, phase: (o.phase ?? 2.5) * i }));
+} });
+// ferry: a platform shuttles across a pit that is too wide to jump. plat = width in tiles (5 fits 5 players, 9 fits 10)
+const ferry = (pit, platW, o = {}) => ({ type: 'ferry', w: 9 + pit + 4, pit, platW, build(g, x0, mv) {
+  rect(g, x0 + 9, 13, pit, 3, '.');
+  mv.push(plat(x0 + 9, 416, platW, pit - platW, 0, { move: o.move || 3.2, dwellA: o.rest || 3.5, dwellB: o.rest || 3.5, phase: o.phase || 0 }));
+} });
+// lift: a wide platform rises from a shaft to a ledge (row 8) with hazards on it; walk off the end and drop to the ground
+const lift = (L, ledgeFeats, o = {}) => ({ type: 'lift', w: 18 + L + 7, L, build(g, x0, mv) {
+  rect(g, x0 + 9, 13, 9, 3, '.');
+  rect(g, x0 + 18, 8, L, 1, '#');
+  for (const [k, c, a] of ledgeFeats || []) if (k === 'spike') rect(g, x0 + 18 + c, 7, a, 1, '^');
+  mv.push(plat(x0 + 9, 416, 9, 0, -160, { move: o.move || 3, dwellA: o.rest || 3, dwellB: o.rest || 3 }));
+} });
+// gate: climb the ledge, stand on the button, and everyone runs through the gate before it shuts (opts.time seconds)
+const gate = (time = 3.5) => ({ type: 'gate', w: 16, time, build(g, x0) {
+  rect(g, x0 + 2, 10, 4, 1, '#'); g[9][x0 + 3] = 'B'; rect(g, x0 + 9, 0, 1, 13, 'G');
+} });
+// stackKey: the key sits on a platform only a k-high stack can reach
+const stackKey = k => ({ type: 'stackKey', w: 18, k, build(g, x0) {
+  const row = 11 - k; rect(g, x0 + 8, row, 4, 1, '#'); return { x: x0 + 9, y: row - 1 };
+} });
+// springKey: two springs in a row; the second only reaches the key if jump is HELD
+const springKey = () => ({ type: 'springKey', w: 24, build(g, x0) {
+  rect(g, x0 + 6, 12, 1, 1, 'S'); rect(g, x0 + 9, 9, 4, 1, '#'); rect(g, x0 + 11, 8, 1, 1, 'S'); rect(g, x0 + 13, 3, 4, 1, '#');
+  return { x: x0 + 15, y: 2 };
+} });
+
+function level(name, min, hint, segs, opts = {}) {
+  const movers = []; let x = START, key = null;
+  const width = START + segs.reduce((a, s) => a + s.w, 0) + DOOR_ZONE;
+  const g = make(width); rect(g, 0, 13, width, 3, '#');
+  const placed = segs.map(s => { const x0 = x; const k = s.build(g, x0, movers); if (k) key = k; x += s.w; return { ...s, x0, build: undefined }; });
+  rect(g, width - 9, 10, 8, 3, 'D'); // door: wide enough for 10 players at once
+  if (!key) throw new Error(`${name}: no key`);
+  return { name, min, hint, movers, gateTime: opts.gateTime || 3.5, spawn: { x: 1, y: 12 }, key, segs: placed, grid: g.map(r => r.join('')) };
 }
 
-// Extra tiles: 'B' = timed button (opens every 'G' gate for gateTime seconds), 'G' = gate (solid until opened).
-// Hazards stay clear of the spawn row (cols 0-10). A stack is only ever needed for the KEY.
+// Hazard spacing (checked by the bots): 2+ free tiles between a pit and the next hazard, nothing within ~4 tiles after a drop-off.
+const garden = (n, c0 = 4) => Array.from({ length: n }, (_, i) => ['spike', c0 + i * 4, 2]);       // spike patches with 2-tile safe islands
+const stones = (n, c0 = 4) => Array.from({ length: n }, (_, i) => ['pit', c0 + i * 5, 3]);          // 3-wide pits with 2-tile stepping stones
+const HARD_SAWS = { move: 0.9, dwellA: 1.7, dwellB: 1.6 };
+
 const LEVELS = [
-  // 1: a gentle first level, but already with a box, a wall, spikes and a pit
-  lvl('1. Warm-up', 1, { x: 25, y: 12 }, 'Grab the key, then everyone into the door.', g => {
-    rect(g, 12, 12, 2, 1, '#');
-    rect(g, 16, 11, 2, 2, '#');
-    rect(g, 22, 12, 2, 1, '^');
-    rect(g, 27, 13, 2, 3, '.');
-  }),
-  // 2: a 2-stack for the key, then a pit and a wall to cross CARRYING the key (die and it flies home)
-  lvl('2. Give me a boost', 2, { x: 15, y: 8 }, "Too high alone: stand on a friend's head. Dying with the key sends it home!", g => {
-    rect(g, 14, 9, 4, 1, '#');
-    rect(g, 24, 13, 3, 3, '.');
-    rect(g, 29, 11, 2, 2, '#');
-  }),
-  // 3: three pits with small stepping stones, then a 2-stack for the key
-  lvl('3. Stepping stones', 2, { x: 27, y: 8 }, 'Hold jump for a full leap. Stones are small, and friends push!', g => {
-    rect(g, 10, 13, 3, 3, '.');
-    rect(g, 15, 13, 3, 3, '.');
-    rect(g, 20, 13, 3, 3, '.');
-    rect(g, 26, 9, 4, 1, '#');
-  }),
-  // 4: 3-stack, then spikes and a wall with the key in hand
-  lvl('4. Tall order', 3, { x: 16, y: 7 }, 'Three-high stack: the one on top grabs the key.', g => {
-    rect(g, 15, 8, 3, 1, '#');
-    rect(g, 24, 12, 2, 1, '^');
-    rect(g, 28, 11, 2, 2, '#');
-  }),
-  // 5: climb to the button, then everyone through the gate in 3.5 s, then a 2-stack
-  lvl('5. Gatekeepers', 2, { x: 23, y: 8 }, 'Someone press the button, then EVERYONE through the gate before it shuts!', g => {
-    rect(g, 10, 10, 4, 1, '#');
-    g[9][11] = 'B';
-    rect(g, 17, 0, 1, 13, 'G');
-    rect(g, 22, 9, 4, 1, '#');
-  }, { gateTime: 3.5 }),
-  // 6: pure platforming: four spike patches in a row. Solo-able, but with friends shoving...
-  lvl('6. Spike garden', 1, { x: 27, y: 12 }, 'Time every leap. Small safe patches, and friends push!', g => {
-    rect(g, 11, 12, 2, 1, '^');
-    rect(g, 15, 12, 2, 1, '^');
-    rect(g, 19, 12, 2, 1, '^');
-    rect(g, 23, 12, 2, 1, '^');
-  }),
-  // 7: two gates, spikes between them, 3 s timer, then a 2-stack
-  lvl('7. Double gate', 2, { x: 27, y: 8 }, 'Two gates and spikes between them. Be quick!', g => {
-    rect(g, 9, 10, 4, 1, '#');
-    g[9][10] = 'B';
-    rect(g, 14, 0, 1, 13, 'G');
-    rect(g, 18, 12, 2, 1, '^');
-    rect(g, 22, 0, 1, 13, 'G');
-    rect(g, 26, 9, 4, 1, '#');
-  }, { gateTime: 3 }),
-  // 8: key six tiles up -> a 4-stack (4+ players), after spikes, a pit and more spikes
-  lvl('8. The tower', 4, { x: 25, y: 6 }, 'Four-high tower. Everyone has a job.', g => {
-    rect(g, 11, 12, 2, 1, '^');
-    rect(g, 14, 13, 3, 3, '.');
-    rect(g, 19, 12, 2, 1, '^');
-    rect(g, 24, 7, 4, 1, '#');
-  }),
-  // 9: moving platform (vertical). The key sits on a high ledge only the elevator reaches; spikes on the way and on the ledge.
-  lvl('9. Elevator', 1, { x: 27, y: 6 }, 'Ride the lift up for the key. Wait for it, stand still, and mind the spikes up there.', g => {
-    rect(g, 13, 12, 2, 1, '^');
-    rect(g, 22, 7, 7, 1, '#');
-    rect(g, 24, 6, 2, 1, '^');
-  }, { movers: [plat(19, 402, 3, 0, -178, { move: 3.4, dwellA: 2.4, dwellB: 2.4 })] }),
-  // 10: a wide ferry crosses a 13-tile pit; everybody must ride it (it carries the whole room at once)
-  lvl('10. The ferry', 1, { x: 9, y: 12 }, 'The pit is far too wide to jump. Board the ferry, stand still, step off on the far side.', g => {
-    rect(g, 11, 13, 13, 3, '.');
-    rect(g, 28, 11, 2, 2, '#');
-  }, { movers: [plat(11, 416, 9, 4, 0, { move: 3.2, dwellA: 3.5, dwellB: 3.5 })] }),
-  // 11: springs. Hold jump on the second one: tapping falls short of the key ledge.
-  lvl('11. Trampolines', 1, { x: 19, y: 2 }, 'Land on a spring and HOLD jump: the second one only reaches the key if you hold.', g => {
-    rect(g, 10, 12, 1, 1, 'S');
-    rect(g, 13, 9, 4, 1, '#');
-    rect(g, 15, 8, 1, 1, 'S');
-    rect(g, 17, 3, 4, 1, '#');
-    rect(g, 26, 12, 2, 1, '^');
-    rect(g, 29, 11, 2, 2, '#');
-  }),
-  // 12: two saw lanes the whole room has to cross, in a pack, while the blades are up
-  lvl('12. Sawmill', 1, { x: 27, y: 12 }, 'Wait for the blades to rise, then run. Everyone has to get through both lanes.', g => {}, {
-    movers: [saw(12, 322, 394, { phase: 0 }), saw(24, 322, 394, { phase: 2.5 })],
-  }),
+  level('1. The long road', 1, 'A long way to the door, with checkpoints. Touch a flag and everyone respawns there.', [
+    terrain(24, [['spike', 6, 2], ['pit', 12, 3], ['wall', 19, 2, 2]]),
+    rest(),
+    terrain(30, [...garden(3), ['pit', 17, 3], ['spike', 22, 2]], { key: 27 }),
+    rest(),
+    terrain(30, [['wall', 4, 2, 2], ['pit', 10, 3], ['spike', 16, 2], ['spike', 20, 2], ['pit', 25, 3]]),
+  ]),
+  level('2. Sawmill run', 1, 'Saw lanes in a row. Wait for the blades to rise, then run, all of you.', [
+    terrain(26, [['spike', 5, 2], ['spike', 9, 2], ['pit', 14, 3], ['wall', 20, 2, 2]]),
+    saws(3),
+    rest(),
+    terrain(30, [['spike', 4, 2], ['pit', 9, 3], ['spike', 15, 2], ['spike', 19, 2], ...stones(1, 24)], { key: 22 }),
+    saws(3, HARD_SAWS),
+    rest(),
+    terrain(30, [...stones(3, 4), ['spike', 22, 2]]),
+  ]),
+  level('3. Over the water', 2, 'Ferries carry five at a time. Wait your turn, stand still, and watch the spikes after each crossing.', [
+    terrain(24, [['spike', 6, 2], ['wall', 13, 2, 2], ['spike', 19, 2]]),
+    ferry(12, 5),
+    rest(),
+    stackKey(2),
+    terrain(22, [...garden(3), ['pit', 16, 3]]),
+    ferry(13, 5, { phase: 4 }),
+    rest(),
+    terrain(26, [['spike', 5, 2], ['spike', 9, 2], ['wall', 15, 2, 2], ['spike', 20, 2]]),
+    ferry(12, 5, { move: 2.6, rest: 3 }),
+    terrain(20, [['spike', 6, 2]]),
+  ]),
+  level('4. Gatekeepers II', 2, 'One of you holds the button. The rest run for the gates. Gates close again!', [
+    terrain(22, [['spike', 6, 2], ['pit', 12, 3]]),
+    gate(4),
+    terrain(24, [...garden(3), ['wall', 18, 2, 2]]),
+    gate(4),
+    rest(),
+    stackKey(2),
+    terrain(24, [...stones(2, 4), ['spike', 18, 2]]),
+    gate(4),
+    terrain(22, [['spike', 6, 2], ['spike', 10, 2], ['pit', 15, 3]]),
+  ], { gateTime: 4 }),
+  level('5. Skyline', 1, 'Lifts take the whole crew up. Mind the spikes up there, and the drop.', [
+    terrain(24, [['spike', 6, 2], ['pit', 12, 3]]),
+    lift(16, [['spike', 5, 2], ['spike', 10, 2]]),
+    rest(),
+    springKey(),
+    terrain(24, [...garden(3), ['pit', 17, 3]]),
+    lift(18, [['spike', 4, 2], ['spike', 8, 2], ['spike', 13, 2]]),
+    saws(2, HARD_SAWS),
+    rest(),
+    terrain(32, [['wall', 4, 2, 2], ['pit', 10, 3], ['spike', 18, 2], ['wall', 24, 2, 2]]),
+  ]),
+  level('6. The gauntlet', 3, 'Everything at once. Checkpoints are your friends.', [
+    terrain(26, [...garden(4), ['pit', 20, 3]]),
+    saws(3, HARD_SAWS),
+    rest(),
+    stackKey(3),
+    terrain(24, [['wall', 4, 2, 2], ['spike', 10, 2], ...stones(1, 16)]),
+    ferry(12, 5, { phase: 2 }),
+    rest(),
+    gate(3),
+    saws(2),
+    terrain(26, [...stones(2, 4), ['spike', 16, 2], ['spike', 20, 2]]),
+    rest(),
+    terrain(24, [...garden(4)]),
+  ], { gateTime: 3.6 }),
+  level('7. Tower of Babel', 4, 'A four-high tower, then lifts, saws and ferries. Nobody gets left behind.', [
+    terrain(26, [['spike', 6, 2], ['pit', 12, 3], ['wall', 19, 2, 2], ['spike', 23, 2]]),
+    stackKey(4),
+    rest(),
+    lift(14, [['spike', 4, 2], ['spike', 9, 2]]),
+    saws(3, HARD_SAWS),
+    rest(),
+    ferry(13, 5),
+    terrain(22, [...garden(3), ['pit', 16, 3]]),
+    rest(),
+    gate(2.8),
+    terrain(24, [...stones(3, 4)]),
+  ], { gateTime: 3.6 }),
+  level('8. Endurance', 4, 'The whole campaign in one go. Good luck, all of you.', [
+    terrain(22, [...garden(3), ['pit', 18, 3]]),
+    saws(2, HARD_SAWS),
+    rest(),
+    stackKey(4),
+    terrain(22, [['wall', 4, 2, 2], ...stones(2, 8)]),
+    ferry(12, 5, { phase: 1 }),
+    rest(),
+    lift(14, [['spike', 4, 2], ['spike', 9, 2]]),
+    gate(),
+    saws(2, HARD_SAWS),
+    rest(),
+    terrain(26, [...garden(4), ['wall', 22, 2, 2]]),
+    ferry(13, 5, { phase: 3, move: 2.6 }),
+    terrain(24, [...stones(2, 4), ['spike', 20, 2]]),
+  ], { gateTime: 3.6 }),
 ];
 
-module.exports = { LEVELS, TILE, W, H };
+module.exports = { LEVELS, TILE, H };

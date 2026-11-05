@@ -1,6 +1,6 @@
 # Stack, architecture and costs
 
-Last updated 2026-11-05 (after the first playtest, plus moving platforms). Everything here describes the **prototype**.
+Last updated 2026-11-05 (after the first playtest: moving platforms, then long hard levels). Everything here describes the **prototype**.
 
 ## Stack
 
@@ -50,6 +50,10 @@ Last updated 2026-11-05 (after the first playtest, plus moving platforms). Every
   the past, so a remote rider is shifted along with its platform at draw time. Saws kill on touch (checked on the server every tick).
 - **Springs** (`S` tile) launch you at 1000 px/s on landing. While rising faster than a normal jump the jump-cut does not apply, so a held jump
   reaches ~220 px and a tap ~135 px. This needs no extra state, so prediction handles it for free.
+- **Long levels.** A level is a start zone, a list of segments laid end to end (`terrain`, `rest` with a checkpoint flag, `saws`,
+  `ferry`, `lift`, `gate`, `stackKey`, `springKey`) and the door zone. `levels.js` builds the grid, the movers and the key position from
+  that list, and the bot tests read the same list to play it. The client scrolls a camera that follows your own player and draws a
+  mini-map. Checkpoints (`C` tiles): when anyone touches one, `spawnCol` moves there for everybody (never backwards); it is sent in every snapshot as `c`.
 - **Fixed 60 Hz server clock** driven by real elapsed time (a plain `setInterval` drifts and would cause
   constant prediction corrections). One queued input per tick also stops a client from speeding up.
 - **Rooms** are created on first join by room code, hold up to 10 players, and are deleted when empty.
@@ -59,7 +63,7 @@ Last updated 2026-11-05 (after the first playtest, plus moving platforms). Every
 
 - Fall off the map or touch spikes: only that player respawns after about 1.5 s; a carried key returns home.
 - A level is won when the key has reached the door (door opens) and **every** connected player is touching it.
-- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate, `S` spring) plus a `movers` list (platforms, saws). 12 levels; the last loops to the 1st. The creator of a room picks the start level (`level` in the join message) and the host can switch with `{t:'go', l}`; `/levels.json` lists names for the pickers.
+- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate, `S` spring) plus a `movers` list (platforms, saws). 8 long levels (150-355 tiles, built from segments, see below); the last loops to the 1st. The creator of a room picks the start level (`level` in the join message) and the host can switch with `{t:'go', l}`; `/levels.json` lists names for the pickers.
 - **Timed gate (levels 5 and 7):** standing on a `B` button opens every `G` gate for the level's `gateTime` (3.5 s and 3 s) after the last press. A gate never
   closes on a player standing inside it (it stays open at least 0.6 s after anyone is in it).
 - Players never visually overlap: remote players are nudged out of overlap at draw time (the local player's own box is exact).
@@ -73,7 +77,10 @@ Last updated 2026-11-05 (after the first playtest, plus moving platforms). Every
      at each end long enough to board (3.5 s on the ferry). Keep platform paths free of walls and floors so nobody is crushed.
   5. A saw lane must stay passable for a whole pack (the bots wait for 2.4 s of clear time), and nothing a player must cross
      may be unjumpable except the ferry pit (13 tiles).
-  6. Keep hazards clear of the spawn row (10 players spawn across x = 32..290) and leave a run-up between
+  6. The first hazard of a terrain segment is 8+ tiles in (`LEAD`): a pack of 10 arriving behind you shoves you ~7 tiles forward.
+  7. Keep 4+ tiles between a pit and the next hazard (a landing in a dense pack gets shoved).
+  8. A gate must stay open long enough for the presser to sprint through behind the pack (3.6-4 s).
+  9. Keep hazards clear of the spawn row (10 players spawn across x = 32..290) and leave a run-up between
      a pit and a following hazard.
 
 ## Hosting and cost
@@ -111,7 +118,8 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 - No accounts, no reconnection slot-holding, no kick button, no payments, no sound. (All are in the design doc.)
 - Rooms live in server memory; a restart or free-tier spin-down drops everyone.
 - Remote riders on moving platforms are shifted at draw time, which is approximate. Prediction while riding is within ~2 px in the simulated-network test.
-- Level 4 needs 3+ players, level 8 needs 4+; difficulty with real humans is untested (bots pass them, which only proves they are solvable).
+- Levels 3, 4, 6 need 2-3+ players and levels 7, 8 need 4+. Difficulty with real humans is untested: bots pass every level with no deaths, which only proves they are solvable. If a key carrier dies the key returns to where it started, which on a long level can be far back.
+- The camera follows only your own player, so you can lose sight of friends who run ahead (the mini-map shows them).
 - The jump is shorter than before (reach ~115 px horizontally), so pits must stay at 3 tiles or less.
 
 ## Next steps (if the prototype feels right)
