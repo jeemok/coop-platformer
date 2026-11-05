@@ -1,6 +1,6 @@
 # Stack, architecture and costs
 
-Last updated 2026-11-05. Everything here describes the **prototype**.
+Last updated 2026-11-05 (after the first playtest). Everything here describes the **prototype**.
 
 ## Stack
 
@@ -11,7 +11,7 @@ Last updated 2026-11-05. Everything here describes the **prototype**.
 | Language | JavaScript (CommonJS/UMD) | Shared modules use a small UMD wrapper so Node and the browser run the same file. |
 | Hosting (planned) | Render free web service, Singapore | Players are mostly in Southeast Asia. |
 | Source | GitHub (private repo) | Render deploys from it via `render.yaml`. |
-| Art / audio | None yet | Placeholder rectangles. Plan: free CC0 packs (e.g. Kenney). |
+| Art / audio | Drawn in code | Characters, key, door, tiles, background and particles are drawn with Canvas calls; sound effects are a tiny WebAudio synth. No asset files. |
 | Payments | Not built | Planned: one-time host unlock via a merchant of record or Stripe, plus a donation link. |
 
 ## Architecture
@@ -33,9 +33,16 @@ Last updated 2026-11-05. Everything here describes the **prototype**.
 - **One physics module (`sim.js`).** Simple AABB movement in 1-pixel sub-steps. Players are solid to each
   other: walking into someone pushes them (chains of up to 12), jumping into someone below pushes them up,
   and a player standing on someone is carried when they move.
+- **Jump feel.** Peak ~110 px. Gravity is 1.6x on the way down and 4x when the jump key is released while rising
+  (hold = full jump, tap = short hop). First playtest said the original jump was floaty.
 - **Prediction.** The client runs `sim.js` on its own player immediately. When a snapshot arrives it rewinds
   to the server's state, drops inputs the server has acknowledged, replays the rest, and eases any leftover
   error out over a few ticks (snaps only if it is off by more than 64 px).
+- **Jitter handling.** The server advances a player by one queued input per tick. If the queue is empty (late
+  packet) the player simply does not advance for up to 6 ticks, so the server never runs ahead of the client's
+  replay. If more than 3 inputs are queued (after a stall) it consumes two per tick, limited by a credit bucket
+  (about +10% speed sustained) so flooding inputs cannot speed-hack. Previously the queue dropped the oldest input
+  on overflow, which caused rubber-banding.
 - **Fixed 60 Hz server clock** driven by real elapsed time (a plain `setInterval` drifts and would cause
   constant prediction corrections). One queued input per tick also stops a client from speeding up.
 - **Rooms** are created on first join by room code, hold up to 10 players, and are deleted when empty.
@@ -45,7 +52,10 @@ Last updated 2026-11-05. Everything here describes the **prototype**.
 
 - Fall off the map or touch spikes: only that player respawns after about 1.5 s; a carried key returns home.
 - A level is won when the key has reached the door (door opens) and **every** connected player is touching it.
-- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door). 5 levels; the 5th loops to the 1st.
+- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate). 7 levels; the last loops to the 1st.
+- **Timed gate (level 6):** standing on a `B` button opens every `G` gate for 4 s after the last press. A gate never
+  closes on a player standing inside it (it stays open at least 0.6 s after anyone is in it).
+- Players never visually overlap: remote players are nudged out of overlap at draw time (the local player's own box is exact).
 - **Level design rules learned the hard way** (each was a real bug caught by the bot tests):
   1. A stack may only be needed to reach the **key**, which sits on a floating platform. Never gate the path
      to the door behind a climb the last player cannot make: nobody can pull the last player up.
@@ -87,7 +97,8 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
   (we only see them 100 ms in the past).
 - No accounts, no reconnection slot-holding, no kick button, no payments, no sound. (All are in the design doc.)
 - Rooms live in server memory; a restart or free-tier spin-down drops everyone.
-- Level 4 needs 3+ players; level 5's difficulty with real humans is untested.
+- Level 4 needs 3+ players, level 7 needs 4+; difficulty with real humans is untested (bots pass them, which only proves they are solvable).
+- The jump is shorter than before (reach ~115 px horizontally), so pits must stay at 3 tiles or less.
 
 ## Next steps (if the prototype feels right)
 

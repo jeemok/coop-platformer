@@ -20,7 +20,9 @@
       this.off = { x: 0, y: 0 };
       this.lastError = 0;
     }
-    setGrid(grid) { this.sim.setGrid(grid); this.history = []; this.ready = false; this.off.x = this.off.y = 0; this.sim.players.clear(); }
+    setGrid(grid) { this.sim.setGrid(grid); this.sim.gateOpen = false; this.history = []; this.ready = false; this.off.x = this.off.y = 0; this.sim.players.clear(); }
+
+    setGate(open) { this.sim.gateOpen = !!open; }
 
     // other players, at the (interpolated) positions the user currently sees: [{id,x,y,dead}]
     setGhosts(list) {

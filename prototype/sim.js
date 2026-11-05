@@ -4,7 +4,10 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.Sim = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const TILE = 32, PW = 24, PH = 28, SPEED = 200, GRAV = 1800, JUMP = 650, MAXV = 900;
+  const TILE = 32, PW = 24, PH = 28, SPEED = 200, MAXV = 900;
+  // Jump feel: ~114 px peak (same reach as before) but snappy. Gravity is 1.6x on the way down and
+  // 4x on the way up when the jump key is released (hold = full jump, tap = short hop).
+  const GRAV = 2200, JUMP = 710, FALL_MULT = 1.6, CUT_MULT = 4;
   // Boxes that merely touch must not count as overlapping: float error would otherwise make a
   // pushed player try to push the pusher back, deadlocking long chains of players.
   const EPS = 1e-6;
@@ -12,9 +15,13 @@
   const box = p => ({ x: p.x, y: p.y, w: PW, h: PH });
 
   class Sim {
-    constructor(grid) { this.players = new Map(); this.setGrid(grid || []); }
+    constructor(grid) { this.players = new Map(); this.gateOpen = false; this.setGrid(grid || []); }
     setGrid(grid) { this.grid = grid; this.rows = grid.length; this.cols = grid.length ? grid[0].length : 0; }
-    solid(tx, ty) { if (tx < 0 || tx >= this.cols) return true; if (ty < 0 || ty >= this.rows) return false; return this.grid[ty][tx] === '#'; }
+    solid(tx, ty) {
+      if (tx < 0 || tx >= this.cols) return true; if (ty < 0 || ty >= this.rows) return false;
+      const c = this.grid[ty][tx];
+      return c === '#' || (c === 'G' && !this.gateOpen); // 'G' = gate: solid until a button opens it
+    }
     hitsTile(p) {
       const e = 1e-4;
       for (let ty = Math.floor(p.y / TILE); ty <= Math.floor((p.y + PH - e) / TILE); ty++)
@@ -61,10 +68,11 @@
     stepPlayer(p, input, dt) {
       if (input.j && p.onGround) p.vy = -JUMP;
       p.onGround = false;
-      p.vy = Math.min(p.vy + GRAV * dt, MAXV);
+      const g = p.vy < 0 ? (input.j ? GRAV : GRAV * CUT_MULT) : GRAV * FALL_MULT;
+      p.vy = Math.min(p.vy + g * dt, MAXV);
       this.moveX(p, (input.r - input.l) * SPEED * dt);
       this.moveY(p, p.vy * dt);
     }
   }
-  return { Sim, TILE, PW, PH, SPEED, GRAV, JUMP, MAXV, ov, box };
+  return { Sim, TILE, PW, PH, SPEED, GRAV, JUMP, FALL_MULT, CUT_MULT, MAXV, ov, box };
 });

@@ -10,6 +10,26 @@ function setup(levelIdx, n) {
   return { r, ps };
 }
 
+// 0. Jump feel: holding jumps high, a tap is a short hop, and falling is faster than rising (not floaty)
+{
+  const jump = holdTicks => {
+    const { r, ps } = setup(1, 1); const p = ps[0]; run(r, 60); const g = p.y; let minY = g, tUp = 0, tDown = 0, peaked = false;
+    for (let i = 0; i < 120; i++) {
+      p.input = { l: 0, r: 0, j: i < holdTicks ? 1 : 0 }; r.update(1 / 60);
+      if (i > 0 && p.onGround) break;
+      if (p.y < minY) { minY = p.y; tUp = i; } else peaked = true;
+      if (peaked) tDown = i - tUp;
+    }
+    return { rise: g - minY, tUp, tDown };
+  };
+  const full = jump(60), tap = jump(2);
+  console.log('full jump', full, 'tap', tap);
+  assert(full.rise > 100 && full.rise < 128, 'held jump should be ~110px');
+  assert(tap.rise < full.rise * 0.45, `a tap should be a short hop (${tap.rise.toFixed(0)}px vs ${full.rise.toFixed(0)}px)`);
+  assert(full.tDown < full.tUp * 0.9, 'falling should be quicker than rising');
+  assert((full.tUp + full.tDown) / 60 < 0.65, 'total air time should be under 0.65 s');
+}
+
 // 1. A single player cannot clear a 4-tile wall by jumping (jump apex < 128px)
 {
   const { r, ps } = setup(1, 1); const p = ps[0];
