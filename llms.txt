@@ -1,0 +1,24 @@
+# Co-op Platformer
+
+> A free, original, browser-based co-op puzzle platformer for 1-10 players. Players push each other, stand on each other's heads, ride moving platforms, dodge saws and spikes, carry one key to the door, and every player must reach the door to win a level. No download or account: open the link, type a nickname, play. Inspired by the mechanics of games like Pico Park, but all code, levels and art are original.
+
+Play: https://coop-platformer.onrender.com
+Source: https://github.com/jeemok/coop-platformer
+(The free host sleeps after 15 minutes idle; the first visit can take about a minute to wake.)
+
+## How to play (for people, or agents driving a browser)
+
+- Open the Play link. Pick a mode, enter a nickname, optionally a 4-letter room code (blank creates a new room, then share the room code or the "Copy invite link" URL), choose a start level, press Play.
+- Controls: arrow keys or A/D to move, Space/W/Up to jump (hold = high jump, tap = short hop), M = mute. On phones, on-screen buttons appear.
+- Goal: get the key (touch it) to the door, then every connected player must touch the door together. Falling in a pit, touching spikes or saws, or being crushed respawns you; checkpoint flags move everyone's respawn point forward.
+- Two modes:
+  - **Online**: each person opens the site on their own laptop or phone and joins the same room code.
+  - **One screen**: for people in the same room. One laptop picks "One screen" and shows the game plus a QR code. Everyone else scans the QR (or opens `/pad?room=CODE`) on their phone and uses it as a controller (hold sideways: left, right, jump).
+- 8 long levels (150-355 tiles); levels 3-8 need 2-4 or more players. Up to 10 players per room.
+
+## Technical notes (for agents/developers)
+
+- Authoritative Node 22 + `ws` server (60 Hz tick, 30 Hz snapshots), shared deterministic physics in `prototype/sim.js`, client prediction in `prototype/predict.js`, single-file canvas client in `prototype/public/index.html`, phone controller in `prototype/public/pad.html`.
+- WebSocket protocol (same origin as the page): first message `{"t":"join","room":"ABCD","nick":"Name","role":"pad"|"screen"|omitted,"level":1}`. Inputs: `{"t":"in","l":0|1,"r":0|1,"j":0|1}` (pads send these unnumbered every ~250 ms). `role:"screen"` is a watch-only display that can send `{"t":"go","l":N}` and `{"t":"restart"}`.
+- `GET /levels.json` lists level names. Run locally: `cd prototype && npm install && npm start`; tests: `npm test`.
+- Docs: README.md, docs/STACK.md (architecture, netcode, costs, known limits).

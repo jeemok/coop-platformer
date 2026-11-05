@@ -22,7 +22,7 @@
   #right{left:calc(env(safe-area-inset-left) + 18px + min(24vw,34vh + 40px) + 16px);width:min(24vw,34vh + 40px);height:min(44vh,200px)}
   #jump{right:calc(env(safe-area-inset-right) + 18px);width:min(34vw,60vh);height:min(52vh,240px);border-radius:50%;background:rgba(67,99,216,.35);border-color:#7f9bff;font-size:30px;letter-spacing:.06em}
   #jump.on{background:rgba(127,155,255,.7)}
-  #msg{position:absolute;left:0;right:0;top:46%;text-align:center;opacity:.55;font-size:15px;pointer-events:none}
+  #msg{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 44px);text-align:center;opacity:.55;font-size:15px;pointer-events:none}
   @media (orientation:portrait){
     #left,#right{width:30vw;height:30vw;bottom:calc(env(safe-area-inset-bottom) + 24px)}
     #right{left:calc(env(safe-area-inset-left) + 18px + 30vw + 12px)}

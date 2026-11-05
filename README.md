@@ -1,16 +1,40 @@
 # Co-op Platformer
 
-A free, browser-based, online co-op puzzle platformer for 1–10 players. Players push each other,
-stand on each other's heads, carry the key to the door, and everyone has to get through together.
+**A free co-op puzzle platformer you play in the browser, with up to 10 friends.** Stand on each other's heads, push each other across gaps, ride moving platforms, dodge saws, carry one key to the door, and get *everyone* through. Nobody gets left behind.
 
-It is **inspired by the mechanics** of games like Pico Park, but it is an original game: its own code,
-levels and art. Nothing was decompiled, extracted or copied from Pico Park or any TECOPARK asset, and
-none should be added.
+**Play now: https://coop-platformer.onrender.com** (no download, no account; the free host sleeps when idle, so the first visit can take about a minute)
 
-> The written design is in [`docs/superpowers/specs/`](docs/superpowers/specs/2026-11-01-coop-platformer-design.md).
-> See [`docs/STACK.md`](docs/STACK.md) for the stack, architecture, netcode, costs and known limits.
+![Home page](docs/screenshots/home.png)
 
-## Play locally
+It is inspired by the mechanics of games like Pico Park, but it is an original game: its own code, levels and art. Nothing was decompiled, extracted or copied from Pico Park or any TECOPARK asset.
+
+> **For AI assistants and agents:** see [`llms.txt`](llms.txt) for a machine-readable summary of what this is, how to play it and how to join a room.
+
+## Two ways to play
+
+### Online: everyone on their own device
+Everyone opens the site on a laptop or phone, types a nickname and joins the same room code (or the invite link). Keyboard on laptops, on-screen buttons on phones.
+
+![Online play](docs/screenshots/online.png)
+
+### One screen: one laptop, everyone's phone is a controller
+For friends in the same room. One laptop shows the game and a QR code; everyone else scans it and gets a phone controller (hold the phone sideways: left, right, jump).
+
+| Laptop / TV | Phone controller |
+|---|---|
+| ![One-screen join](docs/screenshots/one-screen-join.png) | ![Phone controller](docs/screenshots/phone-controller.png) |
+
+![One-screen play](docs/screenshots/one-screen-play.png)
+
+## The game
+
+- 1-10 players per room (free up to 5 is the planned model; payments are not built yet).
+- 8 long levels (150-355 tiles, 4-11 screens) with checkpoints, a mini-map, a level picker and a room host who can switch levels.
+- Moving platforms (lifts and ferries), saw lanes, spring pads, timed gates with buttons, stack-to-reach keys, spike gardens.
+- Fair by test: bots play every level with the minimum number of players, +2 and a full room of 10, and nobody may die, so each level is provably solvable.
+- Controls: arrows or A/D to move, Space/W/Up to jump (hold = high, tap = hop), M = mute.
+
+## Run it yourself
 
 ```bash
 cd prototype
@@ -18,17 +42,7 @@ npm install
 npm start            # http://localhost:3000   (PORT=3017 npm start to change the port)
 ```
 
-**Two game modes** (pick on the join screen):
-
-- **Remote:** everyone opens the site on their own laptop or phone and plays (keyboard, or on-screen touch buttons on phones).
-- **One screen:** for people in the same room. One laptop shows the game (choose "One screen"; it is watch-only and shows a QR code and room code). Everyone else scans the QR with their phone, which opens `/pad` and becomes a controller (hold it sideways: left, right, jump). The QR is drawn by a library loaded from cdnjs; if that is unreachable, the page shows the phone URL and room code as text.
-
-**Long levels:** levels are 150-355 tiles wide (4-11 screens). The camera follows you, a mini-map along the bottom shows everyone, the key, the checkpoints and the door, and touching a checkpoint flag moves everyone's respawn point there.
-
-**Level choice:** pick a start level on the join screen (used when you create a room). The host (first player in the room) can switch level any time from the drop-down in the top bar.
-
-Open it in two or more browser tabs, enter a nickname, and join the same room code (or use the
-"Copy invite link" button). Controls: arrows or A/D to move, space/W/up to jump.
+Open it in two or more browser tabs, join the same room, or choose "One screen" and open `/pad` on a phone on the same network. Dev options: `START_LEVEL=6 npm start`, `SPAWN_COL=150` (start everyone partway along), `?auto=1` in the URL joins immediately.
 
 ## Test
 
@@ -37,36 +51,38 @@ cd prototype
 npm test
 ```
 
-94 automated checks plus the physics assertions, all headless (no browser):
+94 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
-| `test.js` | Physics basics: jump feel (hold = high, tap = hop, falls faster than it rises), jump height, pushing, riders being carried, moving platforms (lift, ferry, pushing, no overlap), springs (hold = ~220 px, tap = ~135 px), saws, key + door |
-| `test-levels.js` | Bots play all 8 campaign levels (150-355 tiles long) through the real physics with the minimum players, +2, and a full room of 10, and **nobody may die**. Each level is built from segments (saw lanes, ferries, lifts, gates, stacks, springs, spike gardens...) and each segment type has its own bot. Also: a 4-high stack is not buildable by 3 players, gates stay shut without the button, checkpoints work. Debug one case: `ONLY=6:4 TRACE=1 node test-levels.js` (level 6, 4 players). |
-| `test-classic.js` | The 12 original 40-tile levels (`levels-classic.js`) are kept as fixtures: the same bot playthroughs plus negative tests for stacks, gates, lift, ferry and saws. They are no longer in the game menu. |
-| `test-server.js` | Real WebSockets: the room creator picks the start level, only the host can switch level, bad level numbers are ignored; one-screen mode (a screen is not a player, phones join as pads, idle pads stop) |
-| `test-predict.js` | The real client prediction code against the real server over a simulated laggy/jittery network: input shows instantly, corrections stay small, client and server converge, also while riding a moving platform |
+| `test.js` | Physics: jump feel, pushing, riders, moving platforms, springs, saws, key + door |
+| `test-levels.js` | Bots complete all 8 campaign levels with min, min+2 and 10 players, with no deaths. Debug one: `ONLY=6:4 TRACE=1 node test-levels.js` |
+| `test-classic.js` | The 12 original 40-tile levels, kept as fixtures, plus negative tests |
+| `test-server.js` | Real WebSockets: level choice, host rights, one-screen mode (screen vs pads, idle pads stop) |
+| `test-predict.js` | The real client prediction against the real server over a simulated laggy network |
 
-The browser client itself (drawing, keyboard) is **not** covered by automated tests; it was only checked by hand in headless Chrome screenshots. `START_LEVEL=6 npm start` starts new rooms on level 6 and `SPAWN_COL=150` starts everyone that far along (dev only); `?auto=1` in the URL joins immediately.
+The browser client itself (drawing, touch) is not covered by automated tests; it was checked by hand in headless Chrome, not yet on real phones.
 
 ## Deploy (Render, free plan)
 
-`render.yaml` is a Blueprint. In the Render dashboard: **New → Blueprint → select this repo → Apply.**
-It deploys the `prototype/` folder as a free Node web service in the Singapore region.
-See the free-tier caveats in [`docs/STACK.md`](docs/STACK.md#hosting-and-cost).
+`render.yaml` is a Blueprint: **New → Blueprint → select this repo → Apply.** It deploys `prototype/` as a free Node web service in Singapore. Caveats are in [`docs/STACK.md`](docs/STACK.md#hosting-and-cost).
 
 ## Layout
 
 ```
 prototype/
-  server.js        authoritative game server (HTTP + WebSocket, rooms, 60 Hz tick)
-  sim.js           shared physics — used by BOTH the server and the browser
-  predict.js       client-side prediction + server reconciliation (pure logic, unit-tested)
-  levels.js        the 8 campaign levels, built from segments (ASCII grids: # solid, ^ spike, B button, G gate, S spring, C checkpoint, D door; plus moving platforms and saws)
-  levels-classic.js  the 12 old 40-tile levels, kept only as test fixtures
-  public/index.html  the browser client (canvas): remote play and the one-screen display
-  public/pad.html    the phone controller for one-screen mode
-  test*.js         automated tests
-docs/              design doc and stack notes
-render.yaml        Render Blueprint (free plan)
+  server.js          authoritative game server (HTTP + WebSocket, rooms, 60 Hz tick)
+  sim.js             shared physics, used by BOTH the server and the browser
+  predict.js         client-side prediction + server reconciliation
+  levels.js          the 8 campaign levels, built from segments
+  levels-classic.js  the 12 old levels, kept only as test fixtures
+  public/index.html  browser client: remote play and the one-screen display
+  public/pad.html    phone controller for one-screen mode
+  public/llms.txt    served at /llms.txt
+  test*.js           automated tests
+docs/                design doc, stack notes, screenshots
+render.yaml          Render Blueprint (free plan)
+llms.txt             summary for AI assistants
 ```
+
+The written design is in [`docs/superpowers/specs/`](docs/superpowers/specs/2026-11-01-coop-platformer-design.md). Stack, architecture, netcode, costs and known limits: [`docs/STACK.md`](docs/STACK.md).

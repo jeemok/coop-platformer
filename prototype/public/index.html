@@ -2,6 +2,8 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <title>Co-op Platformer</title>
+<meta name="description" content="Free online co-op puzzle platformer for 1-10 players. Stack on friends, push, carry the key to the door. Play on laptops/phones, or on one big screen with phones as controllers.">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
 <style>
   html,body{margin:0;background:#1b1d2a;color:#eee;font-family:system-ui,sans-serif;height:100%}
   #join{max-width:360px;margin:12vh auto;padding:24px;background:#262a3d;border-radius:12px}
@@ -44,6 +46,7 @@
   #modes{display:flex;gap:8px;margin-bottom:8px}
   #modes button{flex:1;background:#343a55!important;font-size:14px!important;line-height:1.25;padding:10px 6px!important;border:2px solid transparent!important}
   #modes button.on{border-color:#7f9bff!important;background:#3b4570!important}
+  #modes .mi{display:block;width:78px;height:46px;margin:0 auto 6px}
   #modes small{display:block;opacity:.7;font-size:11px;margin-top:3px}
   #joinbox{display:none;position:fixed;z-index:5;background:#fff;color:#111;border-radius:14px;padding:10px;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.45);transition:all .25s}
   #joinbox.big{left:50%;top:50%;transform:translate(-50%,-50%);padding:22px 28px}
@@ -68,7 +71,7 @@
 <div id="home">
 <div id="logo"><h1>Co-op <span>Platformer</span></h1><p>Stack, push and carry each other to the door. Nobody gets left behind.</p></div>
 <div id="join">
-  <div id="modes"><button id="mOnline" class="on">Online<small>everyone joins from their own laptop or phone</small></button><button id="mParty">One screen<small>this screen shows the game, everyone uses their phone as a controller</small></button></div>
+  <div id="modes"><button id="mOnline" class="on"><svg viewBox="0 0 120 70" class="mi"><rect x="6" y="8" width="62" height="40" rx="5" fill="#8fd3ff" stroke="#fff" stroke-width="3"/><rect x="0" y="50" width="74" height="6" rx="3" fill="#fff"/><rect x="14" y="30" width="9" height="12" rx="3" fill="#e6194b"/><rect x="28" y="24" width="9" height="18" rx="3" fill="#3cb44b"/><rect x="82" y="16" width="26" height="46" rx="6" fill="#8fd3ff" stroke="#fff" stroke-width="3"/><rect x="90" y="40" width="9" height="12" rx="3" fill="#4363d8"/><path d="M70 30q6-8 12-4" stroke="#ffd23f" stroke-width="3" fill="none" stroke-dasharray="3 4"/></svg>Online<small>everyone joins from their own laptop or phone</small></button><button id="mParty"><svg viewBox="0 0 120 70" class="mi"><rect x="22" y="2" width="76" height="46" rx="5" fill="#8fd3ff" stroke="#fff" stroke-width="3"/><rect x="52" y="48" width="16" height="7" fill="#fff"/><rect x="40" y="55" width="40" height="5" rx="2" fill="#fff"/><rect x="34" y="30" width="9" height="12" rx="3" fill="#e6194b"/><rect x="48" y="24" width="9" height="18" rx="3" fill="#3cb44b"/><rect x="62" y="30" width="9" height="12" rx="3" fill="#f58231"/><rect x="2" y="42" width="18" height="26" rx="4" fill="#262a3d" stroke="#ffd23f" stroke-width="2.5"/><rect x="50" y="62" width="18" height="0"/><rect x="100" y="42" width="18" height="26" rx="4" fill="#262a3d" stroke="#ffd23f" stroke-width="2.5"/><circle cx="11" cy="58" r="3" fill="#ffd23f"/><circle cx="109" cy="58" r="3" fill="#ffd23f"/></svg>One screen<small>this screen shows the game, everyone uses their phone as a controller</small></button></div>
   <input id="nick" placeholder="Your nickname" maxlength="12">
   <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
   <label style="font-size:13px;opacity:.8">Start at level (only used when you create a new room)</label>
