@@ -92,15 +92,15 @@ $('go').onclick = () => {
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
     else if (m.t === 'welcome') { me = m.id; code = m.code; history.replaceState(null, '', '?room=' + code); $('join').style.display = 'none'; $('game').style.display = 'block'; resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
     else if (m.t === 'pong') { const rtt = performance.now() - m.c; ping = pingSeen ? ping * 0.7 + rtt * 0.3 : rtt; pingSeen = true; }
-    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid); gateT = 0; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
+    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
     else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
     else if (m.t === 's') {
       const now = performance.now();
       for (const [id, x, y, dead, vy, og, ack] of m.p) {
-        if (id === me) pred.reconcile({ x, y, dead, vy, og, ack });
+        if (id === me) pred.reconcile({ x, y, dead, vy, og, ack, pt: m.pt });
         else {
           let r = remote.get(id); if (!r) remote.set(id, r = { samples: [], dead: 0 });
-          r.samples.push({ t: now, x, y }); if (r.samples.length > 12) r.samples.shift(); r.dead = dead;
+          r.samples.push({ t: now, x, y, pt: m.pt }); if (r.samples.length > 12) r.samples.shift(); r.dead = dead;
         }
       }
       const hadKey = !!key, holder = key ? key[2] : 0;
@@ -131,7 +131,7 @@ addEventListener('blur', () => { inp.l = inp.r = inp.j = 0; });
 function interp(r, rt) {
   const s = r.samples; if (!s.length) return null;
   if (rt <= s[0].t) return s[0];
-  for (let i = 0; i < s.length - 1; i++) if (rt <= s[i + 1].t) { const k = (rt - s[i].t) / (s[i + 1].t - s[i].t); return { x: s[i].x + (s[i + 1].x - s[i].x) * k, y: s[i].y + (s[i + 1].y - s[i].y) * k }; }
+  for (let i = 0; i < s.length - 1; i++) if (rt <= s[i + 1].t) { const k = (rt - s[i].t) / (s[i + 1].t - s[i].t); return { x: s[i].x + (s[i + 1].x - s[i].x) * k, y: s[i].y + (s[i + 1].y - s[i].y) * k, pt: s[i].pt + (s[i + 1].pt - s[i].pt) * k }; }
   return s[s.length - 1];
 }
 function ghostList(rt) { const out = []; for (const [id, r] of remote) { const p = interp(r, rt); if (p) out.push({ id, x: p.x, y: p.y, dead: r.dead }); } return out; }
@@ -178,6 +178,13 @@ function buildLevel() {
   tileCanvas = document.createElement('canvas'); tileCanvas.width = VW; tileCanvas.height = VH; const g = tileCanvas.getContext('2d');
   grid.forEach((row, ty) => [...row].forEach((c, tx) => {
     const x = tx * T, y = ty * T;
+    if (c === 'S') { // spring pad
+      g.fillStyle = '#3d4350'; g.fillRect(x + 2, y + T - 6, T - 4, 6);
+      g.strokeStyle = '#d5dde8'; g.lineWidth = 3; g.lineJoin = 'round'; g.beginPath(); g.moveTo(x + 7, y + T - 6);
+      for (let i = 0; i < 4; i++) { g.lineTo(x + T - 7, y + T - 10 - i * 4.5); g.lineTo(x + 7, y + T - 12 - i * 4.5); } g.stroke();
+      g.fillStyle = '#e74c3c'; g.beginPath(); g.roundRect(x + 2, y + 2, T - 4, 8, 4); g.fill(); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(x + 7, y + 4, T - 14, 2);
+      return;
+    }
     if (c !== '#') { if (ty >= 13 && c === '.') { const vg = g.createLinearGradient(0, y, 0, y + T); vg.addColorStop(0, '#3a2c3f'); vg.addColorStop(1, '#1d1626'); g.fillStyle = vg; g.fillRect(x, y, T, T); if (!isSolid(tx, ty - 1) && ty === 13) { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, y, T, 5); } } return; }
     const topOpen = !isSolid(tx, ty - 1), botOpen = !isSolid(tx, ty + 1), deep = isSolid(tx, ty - 1) && isSolid(tx, ty - 2);
     // body
@@ -239,6 +246,26 @@ function drawGate(tx, ty0, ty1, open, t) { // gate column from ty0..ty1 (tiles),
   ctx.restore();
 }
 
+function drawPlatform(x, y, w, h) {
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#c9d3e2'); g.addColorStop(0.4, '#8794ab'); g.addColorStop(1, '#4b566b');
+  ctx.fillStyle = 'rgba(120,200,255,.35)'; ctx.fillRect(x + 8, y + h, w - 16, 3); // little thruster glow underneath
+  ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.clip();
+  for (const ex of [x, x + w - 16]) for (let i = -1; i < 3; i++) { ctx.fillStyle = i % 2 ? '#f1c40f' : '#2b2f3a'; ctx.beginPath(); ctx.moveTo(ex + i * 8, y + h); ctx.lineTo(ex + i * 8 + 8, y + h); ctx.lineTo(ex + i * 8 + 12, y); ctx.lineTo(ex + i * 8 + 4, y); ctx.fill(); }
+  ctx.restore();
+  ctx.fillStyle = '#e8eef7'; for (let rx = x + 26; rx < x + w - 24; rx += 28) ctx.fillRect(rx, y + 5, 3, 3);
+}
+function drawSaw(h, t) { // h = hazard {x,y,w,h,d}: rail from A to B, spinning blade at the current position
+  const d = h.d, ax = d.x + d.w / 2, ay = d.y + d.h / 2, bx = ax + d.ax, by = ay + d.ay;
+  ctx.strokeStyle = '#3d4350'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.fillStyle = '#6d7787'; for (const [px, py] of [[ax, ay], [bx, by]]) { ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); }
+  ctx.save(); ctx.translate(h.x + h.w / 2, h.y + h.h / 2); ctx.rotate(t * 11);
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 17); g.addColorStop(0, '#f4f7fb'); g.addColorStop(1, '#8e99aa');
+  ctx.fillStyle = g; ctx.beginPath(); for (let i = 0; i < 24; i++) { const a = i * Math.PI / 12, r = i % 2 ? 11 : 17; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#4d5563'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#e04646'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 7); ctx.fill(); ctx.fillStyle = '#2b2f3a'; ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, 7); ctx.fill();
+  ctx.restore();
+}
 function drawKey(x, y, held, t) { // (x,y) is the centre
   const bob = held ? 0 : Math.sin(t * 3) * 3, rot = held ? Math.sin(t * 6) * 0.12 - 0.5 : Math.sin(t * 2) * 0.15 - 0.6;
   if (!held) { const gl = ctx.createRadialGradient(x, y + bob, 2, x, y + bob, 30 + Math.sin(t * 4) * 4); gl.addColorStop(0, 'rgba(255,230,120,.75)'); gl.addColorStop(1, 'rgba(255,230,120,0)'); ctx.fillStyle = gl; ctx.fillRect(x - 40, y - 40 + bob, 80, 80); }
@@ -368,10 +395,15 @@ function drawPlayer(p, dt, now) {
   if (local) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(p.x + PW / 2 - 4, ty + 7); ctx.lineTo(p.x + PW / 2 + 4, ty + 7); ctx.lineTo(p.x + PW / 2, ty + 12); ctx.fill(); }
 }
 
+// remote players are shown ~100 ms in the past but platforms are drawn 'now': move a remote rider with its platform
+function ridePatch(p, ptr) {
+  if (ptr == null || isNaN(ptr)) return;
+  for (const pl of pred.sim.platforms) { const q = Sim.moverPos(pl.d, ptr); if (p.x < q.x + pl.w && p.x + PW > q.x && Math.abs(p.y + PH - q.y) < 3) { p.x += pl.x - q.x; p.y += pl.y - q.y; return; } }
+}
 // where everyone is drawn this frame; resolves any visual overlap (our own box is exact, others give way)
 function layout(now) {
   const rt = now - INTERP_MS, list = [];
-  for (const [id, r] of remote) { if (!roster.has(id)) continue; const a = animFor(id); if (r.dead) { if (!a.dead) { const p = interp(r, rt); if (p) { burst(p.x + PW / 2, p.y + PH / 2, 16, roster.get(id).color, 170, 60); } } a.dead = true; a.x = null; continue; } a.dead = false; const p = interp(r, rt); if (p) list.push({ id, x: p.x, y: p.y, local: false }); }
+  for (const [id, r] of remote) { if (!roster.has(id)) continue; const a = animFor(id); if (r.dead) { if (!a.dead) { const p = interp(r, rt); if (p) { burst(p.x + PW / 2, p.y + PH / 2, 16, roster.get(id).color, 170, 60); } } a.dead = true; a.x = null; continue; } a.dead = false; const p = interp(r, rt); if (p) { const q = { id, x: p.x, y: p.y, local: false }; ridePatch(q, p.pt); list.push(q); } }
   const a = animFor(me);
   if (pred.ready && !pred.me.dead) { const p = pred.renderPos(); a.dead = false; list.push({ id: me, x: p.x, y: p.y, local: true }); }
   else if (pred.ready && !a.dead) { a.dead = true; a.x = null; const p = pred.renderPos(); burst(p.x + PW / 2, p.y + PH / 2, 16, (roster.get(me) || {}).color || '#fff', 170, 60); sfx.die(); }
@@ -420,6 +452,8 @@ function draw(now) {
       ctx.fillStyle = gateT < 1.2 ? '#ff6b6b' : '#7be37b'; ctx.beginPath(); ctx.roundRect(x - 22, 10, Math.max(4, w), 8, 4); ctx.fill();
     }
   }
+  for (const m of pred.sim.platforms) drawPlatform(m.x, m.y, m.w, m.h);
+  for (const m of pred.sim.hazards) drawSaw(m, t);
   // key
   if (key) {
     const held = !!key[2], kx = key[0] + 10, ky = key[1] + 10;

@@ -79,4 +79,59 @@ function setup(levelIdx, n) {
   assert(r.doorOpen, 'door should open'); run(r, 3);
   assert(r.win > 0, 'level should be won');
 }
+// 6. Moving platforms (level 9 elevator, level 10 ferry)
+{
+  // the elevator carries a rider up to the ledge, and rests at both ends
+  const { r, ps } = setup(8, 1); const p = ps[0], el = r.sim.platforms[0];
+  run(r, 5); assert(Math.abs(el.y - 402) < 0.01, 'elevator starts at the bottom');
+  p.x = el.x + 30; p.y = el.y - PH - 0.5; p.onGround = false; run(r, 10);
+  assert(Math.abs(p.y + PH - el.y) < 2, 'player stands on the platform');
+  let top = Infinity; run(r, 60 * 8, () => { top = Math.min(top, p.y); });
+  console.log('elevator carried the rider up to y', top.toFixed(1));
+  assert(top < 224 - PH + 3, 'the elevator should lift the rider to the ledge height');
+  // it must come back down with the rider on it (no sliding off)
+  run(r, 60 * 3); assert(Math.abs(p.x - (el.x + 30)) < 30, 'rider stays on the platform');
+}
+{
+  // the ferry carries a rider sideways across the pit and sets them down at the far dock
+  const { r, ps } = setup(9, 1); const p = ps[0], fe = r.sim.platforms[0];
+  p.x = fe.x + 100; p.y = fe.y - PH - 0.5; run(r, 5); const x0 = p.x;
+  let maxX = x0; run(r, 60 * 14, () => { maxX = Math.max(maxX, p.x); });
+  console.log('ferry carried the rider', (maxX - x0).toFixed(0), 'px');
+  assert(maxX - x0 > 120, 'the ferry should carry its rider ~4 tiles across');
+  assert(!p.dead, 'rider survived the ride');
+}
+{
+  // a platform pushes a player standing in its way, and crushes one pinned against a wall (the server kills them)
+  const { r, ps } = setup(9, 2); const fe = r.sim.platforms[0], [a, b] = ps;
+  a.x = fe.x + fe.w + 2; a.y = 416 - PH - 0.5; b.x = 800; b.y = 416 - PH - 0.5; run(r, 5);
+  let pushed = 0, dead = false;
+  run(r, 60 * 5, () => { if (a.x > fe.x + fe.w - 1) pushed++; if (a.dead) dead = true; });
+  assert(a.x >= fe.x + fe.w - 0.01 || a.dead || pushed > 0, 'platform should not overlap a player it pushes');
+  assert(!r.sim.platforms.some(pl => [a, b].some(q => !q.dead && ov2(q, pl))), 'no one is left overlapping a platform');
+}
+function ov2(p, pl) { return p.x < pl.x + pl.w - 1e-6 && p.x + 24 > pl.x + 1e-6 && p.y < pl.y + pl.h - 1e-6 && p.y + PH > pl.y + 1e-6; }
+
+// 7. Spring: HOLDING jump launches ~220 px, not holding gives only ~140 px (level 11's second spring needs the hold)
+{
+  const bounce = hold => {
+    const { r, ps } = setup(10, 1); const p = ps[0]; run(r, 5);
+    const sp = r.grid[12].indexOf('S') * TILE; p.x = sp + 4; p.y = 12 * TILE - PH - 40; p.onGround = false; p.vy = 0;
+    let landed = false, minY = Infinity;
+    run(r, 120, () => { p.input = { l: 0, r: 0, j: hold ? 1 : 0 }; if (p.vy < -900) landed = true; if (landed) minY = Math.min(minY, p.y); });
+    assert(landed, 'landing on a spring should launch'); return 12 * TILE - PH - minY;
+  };
+  const held = bounce(true), tapped = bounce(false);
+  console.log('spring rise held', held.toFixed(0), 'not held', tapped.toFixed(0));
+  assert(held > 190 && held < 260, 'held spring should reach ~220px');
+  assert(tapped > 100 && tapped < 165, 'unheld spring should reach ~140px');
+  assert(held - tapped > 60, 'holding jump has to matter on a spring');
+}
+
+// 8. Saw blades kill on touch
+{
+  const { r, ps } = setup(11, 1); const p = ps[0], h = r.sim.hazards[0]; run(r, 5);
+  p.x = h.x - 6; p.y = h.y - 2; p.onGround = false; run(r, 2);
+  assert(p.dead, 'a saw should kill a player it touches');
+}
 console.log('ALL PASS');

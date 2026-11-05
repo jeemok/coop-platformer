@@ -32,14 +32,14 @@ cd prototype
 npm test
 ```
 
-39 automated checks plus the physics assertions, all headless (no browser):
+58 automated checks plus the physics assertions, all headless (no browser):
 
 | Suite | What it proves |
 |---|---|
-| `test.js` | Physics basics: jump feel (hold = high, tap = hop, falls faster than it rises), jump height, pushing, riders being carried, key + door |
-| `test-levels.js` | Bots play all 8 levels through the real physics and win with the minimum players, +2, and a full room of 10. Cooperation-gated levels (stacks, the timed gate) are **not** winnable without the cooperation. Debug one case: `ONLY=6:4 TRACE=1 node test-levels.js` (level 6, 4 players). |
+| `test.js` | Physics basics: jump feel (hold = high, tap = hop, falls faster than it rises), jump height, pushing, riders being carried, moving platforms (lift, ferry, pushing, no overlap), springs (hold = ~220 px, tap = ~135 px), saws, key + door |
+| `test-levels.js` | Bots play all 12 levels through the real physics and win with the minimum players, +2, and a full room of 10. Levels that need cooperation or timing (stacks, the timed gate, the lift, the ferry, the saw lanes) are **not** winnable without it. Debug one case: `ONLY=6:4 TRACE=1 node test-levels.js` (level 6, 4 players). |
 | `test-server.js` | Real WebSockets: the room creator picks the start level, only the host can switch level, bad level numbers are ignored |
-| `test-predict.js` | The real client prediction code against the real server over a simulated laggy/jittery network: input shows instantly, corrections stay small, client and server converge |
+| `test-predict.js` | The real client prediction code against the real server over a simulated laggy/jittery network: input shows instantly, corrections stay small, client and server converge, also while riding a moving platform |
 
 The browser client itself (drawing, keyboard) is **not** covered by automated tests; it was only checked by hand in headless Chrome screenshots. `START_LEVEL=6 npm start` starts new rooms on level 6; `?auto=1` in the URL joins immediately.
 
@@ -56,7 +56,7 @@ prototype/
   server.js        authoritative game server (HTTP + WebSocket, rooms, 60 Hz tick)
   sim.js           shared physics — used by BOTH the server and the browser
   predict.js       client-side prediction + server reconciliation (pure logic, unit-tested)
-  levels.js        the 8 levels (ASCII grids: # solid, ^ spike, B button, G gate, D door)
+  levels.js        the 12 levels (ASCII grids: # solid, ^ spike, B button, G gate, S spring, D door; plus moving platforms and saws)
   public/index.html  the browser client (canvas)
   test*.js         automated tests
 docs/              design doc and stack notes

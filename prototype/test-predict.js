@@ -14,18 +14,19 @@ const script = t => ({
   j: (t >= 40 && t < 48) || (t >= 95 && t < 103) || (t >= 260 && t < 268) ? 1 : 0,
 });
 
-function simulate({ up, down, jitter, blocker = false, seed = 1, ticks = 520 }) {
+function simulate({ up, down, jitter, blocker = false, seed = 1, ticks = 520, level = 0, onPlat = false, keys = script }) {
   const rand = rng(seed);
-  const room = new Room('P'); room.load(0);
+  const room = new Room('P'); room.load(level);
   let tick = 0, lastUp = 0, lastDown = 0;
   const toServer = [], toClient = [];
   const delay = base => Math.max(1, base + Math.floor(rand() * (2 * jitter + 1)) - jitter);
   const myWs = { readyState: 1, send: s => { const at = Math.max(lastDown, tick + delay(down)); lastDown = at; toClient.push({ at, msg: JSON.parse(s) }); } };
   const me = room.add(myWs, 'me');
+  if (onPlat) { const pl = room.sim.platforms[0]; me.x = pl.x + 100; me.y = pl.y - 28 - 0.5; } // start standing on the first moving platform
   if (blocker) room.add({ readyState: 0, send() {} }, 'blocker'); // stands right in front of us
   for (let i = 0; i < 30; i++) room.update(DT); // settle
 
-  const P = new Predictor(); P.setGrid(room.level.grid);
+  const P = new Predictor(); P.setGrid(room.level.grid, room.level.movers);
   const ghosts = new Map();
   const startX = me.x;
   let firstVisibleTick = null, firstServerVisible = null, maxErr = 0, sumErr = 0, nErr = 0, snapsSeen = 0;
@@ -39,14 +40,14 @@ function simulate({ up, down, jitter, blocker = false, seed = 1, ticks = 520 }) 
       snapsSeen++;
       for (const [id, x, y, dead, vy, og, ack] of m.p) {
         if (id === me.id) {
-          P.reconcile({ x, y, vy, og, dead, ack });
+          P.reconcile({ x, y, vy, og, dead, ack, pt: m.pt });
           if (snapsSeen > 3) { maxErr = Math.max(maxErr, P.lastError); sumErr += P.lastError; nErr++; }
           if (firstServerVisible === null && Math.abs(x - startX) > 0.5 && tick >= 10) firstServerVisible = tick;
         } else ghosts.set(id, { id, x, y, dead });
       }
     }
     P.setGhosts([...ghosts.values()]);
-    const inp = P.step(script(tick));
+    const inp = P.step(keys(tick));
     toServer.push({ at: Math.max(lastUp, tick + delay(up)), msg: { t: 'in', ...inp } }); lastUp = toServer[toServer.length - 1].at;
     if (P.ready && firstVisibleTick === null && Math.abs(P.renderPos().x - startX) > 0.5 && tick >= 10) firstVisibleTick = tick;
   }
@@ -73,6 +74,12 @@ scenario('Good internet (RTT ~100ms)', { up: 3, down: 3, jitter: 0 }, r => { ins
 scenario('SEA mobile (RTT ~100ms, jitter)', { up: 3, down: 3, jitter: 2, seed: 7 }, r => { instant(r); faster(r); converged(r); assert(r.maxErr < 25, `max correction ${r.maxErr}`); });
 scenario('Bad (RTT ~250ms, heavy jitter)', { up: 8, down: 7, jitter: 4, seed: 3 }, r => { instant(r); faster(r); converged(r); assert(r.maxErr < 60, `max correction ${r.maxErr}`); });
 scenario('Pushing another player (RTT ~100ms)', { up: 3, down: 3, jitter: 1, blocker: true, seed: 5 }, r => { instant(r); converged(r); assert(r.maxErr < 40, `max correction ${r.maxErr}`); });
+
+// riding a moving platform: standing still, then shuffling about and hopping, while it carries us (ferry = level 10, elevator = level 9)
+const rideKeys = t => ({ l: (t >= 300 && t < 320) || (t >= 560 && t < 600) ? 1 : 0, r: (t >= 270 && t < 290) || (t >= 520 && t < 545) ? 1 : 0, j: (t >= 420 && t < 430) || (t >= 700 && t < 712) ? 1 : 0 });
+scenario('Riding the ferry (RTT ~100ms, jitter)', { up: 3, down: 3, jitter: 2, seed: 11, level: 9, onPlat: true, ticks: 900, keys: rideKeys }, r => { converged(r); assert(r.maxErr < 6, `max correction ${r.maxErr}`); });
+scenario('Riding the elevator (RTT ~100ms, jitter)', { up: 3, down: 3, jitter: 2, seed: 4, level: 8, onPlat: true, ticks: 900, keys: rideKeys }, r => { converged(r); assert(r.maxErr < 6, `max correction ${r.maxErr}`); });
+scenario('Ferry on a bad connection (RTT ~250ms)', { up: 8, down: 7, jitter: 4, seed: 3, level: 9, onPlat: true, ticks: 900, keys: rideKeys }, r => { converged(r); assert(r.maxErr < 15, `max correction ${r.maxErr}`); });
 
 console.log('\n' + rows.join('\n'));
 console.log(`\n${ok} checks passed${process.exitCode ? ' (with FAILURES)' : ''}`);

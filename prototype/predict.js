@@ -18,9 +18,9 @@
       this.me = { x: 0, y: 0, vy: 0, onGround: false, dead: 0 };
       this.history = []; this.seq = 0; this.ready = false;
       this.off = { x: 0, y: 0 };
-      this.lastError = 0;
+      this.lastError = 0; this.pt = 0;
     }
-    setGrid(grid) { this.sim.setGrid(grid); this.sim.gateOpen = false; this.history = []; this.ready = false; this.off.x = this.off.y = 0; this.sim.players.clear(); }
+    setGrid(grid, movers) { this.sim.setGrid(grid); this.sim.setMovers(movers); this.pt = 0; this.sim.gateOpen = false; this.history = []; this.ready = false; this.off.x = this.off.y = 0; this.sim.players.clear(); }
 
     setGate(open) { this.sim.gateOpen = !!open; }
 
@@ -38,6 +38,7 @@
 
     _advance(inp) {
       const me = this.me;
+      this.sim.movePlatforms(this.pt, [me], true); // platforms carry us exactly as the server does
       // someone standing on a player who moves is carried along with them
       for (const g of this.sim.players.values()) {
         if (g.dead || !g.dx) continue;
@@ -51,7 +52,8 @@
       const inp = { s: ++this.seq, l: input.l ? 1 : 0, r: input.r ? 1 : 0, j: input.j ? 1 : 0 };
       this.history.push(inp);
       if (this.history.length > 300) this.history.shift();
-      if (this.ready && !this.me.dead) this._advance(inp);
+      this.pt++;
+      if (this.ready && !this.me.dead) this._advance(inp); else this.sim.movePlatforms(this.pt, [], true);
       this.off.x *= OFFSET_DECAY; this.off.y *= OFFSET_DECAY;
       if (Math.abs(this.off.x) < 0.01) this.off.x = 0;
       if (Math.abs(this.off.y) < 0.01) this.off.y = 0;
@@ -62,8 +64,9 @@
     reconcile(srv) {
       const me = this.me, had = this.ready && !me.dead, px = me.x, py = me.y;
       this.history = this.history.filter(h => h.s > srv.ack);
+      this.pt = srv.pt || 0; this.sim.placeMovers(this.pt); // platforms as of the server's tick; each replayed input is one tick later
       me.x = srv.x; me.y = srv.y; me.vy = srv.vy; me.onGround = !!srv.og; me.dead = srv.dead ? 1 : 0;
-      if (!me.dead) for (const h of this.history) this._advance(h);
+      for (const h of this.history) { this.pt++; if (!me.dead) this._advance(h); else this.sim.movePlatforms(this.pt, [], true); }
       if (had && !me.dead) {
         const dx = px - me.x, dy = py - me.y;
         this.lastError = Math.hypot(dx, dy);

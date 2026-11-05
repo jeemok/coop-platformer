@@ -4,6 +4,7 @@
 const assert = require('assert');
 const { Room, PW, PH, TILE } = require('./server');
 const { LEVELS } = require('./levels');
+const { moverPos } = require('./sim');
 
 const fake = () => ({ readyState: 0, send() {} });
 const ov = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -146,7 +147,77 @@ const stack2Gate = stackN(2, gatePrelude, true);
 // level 1: everyone just walks to the door; the key is picked up on the way
 const solo = (r, ps) => ps.map(p => (function* () { yield* walk(r, p, r.key.x + 10, () => r.key.holder != null); yield* toDoor(r, p); })());
 
-const SCRIPTS = [solo, stack2, stack2, stack3, stack2Gate, solo, stack2Gate, stack4];
+
+// ---- moving platforms, springs and saws (levels 9-12) ----
+const cycle = d => 2 * d.move + d.dwellA + d.dwellB;
+const cycT = (d, r) => (((r.pt / 60 + d.phase) % cycle(d)) + cycle(d)) % cycle(d);
+const restA = (d, r) => { const T = cycT(d, r); return T < d.dwellA ? d.dwellA - T : 0; };                              // seconds left resting at A
+const restB = (d, r) => { const T = cycT(d, r), s = d.dwellA + d.move; return T >= s && T < s + d.dwellB ? s + d.dwellB - T : 0; }; // ... at B
+const onPlat = (p, pl) => Math.abs((p.y + PH) - pl.y) < 2.5 && p.x < pl.x + pl.w && p.x + PW > pl.x;
+// walk (never jumping) until our LEFT edge is at getX()
+function* shuffleTo(p, getX, max = 1500) {
+  let n = 0;
+  while (Math.abs(getX() - p.x) > 3) { if (++n > max) throw new Error(`shuffle timeout x=${p.x.toFixed(0)} want ${getX().toFixed(0)}`); const l = getX() < p.x; p.input = { l: l ? 1 : 0, r: l ? 0 : 1, j: 0 }; yield; }
+  stop(p);
+}
+// level 9: the rightmost player rides the lift to the ledge (hopping on while it rests at the bottom), steps off at the top, takes the key
+const elevator = (r, ps) => {
+  const carrier = byX(ps)[0], pl = r.sim.platforms[0], d = pl.d;
+  return ps.map(p => (function* () {
+    if (p !== carrier) { yield* wait(() => r.key.holder != null); yield* toDoor(r, p); return; }
+    yield* walk(r, p, d.x - 40);
+    yield* wait(() => restA(d, r) > 1.2);
+    let n = 0;
+    while (!onPlat(p, pl)) { if (++n > 200) throw new Error('could not board the lift'); p.input = { l: 0, r: 1, j: (p.onGround && p.x + PW > pl.x - 20) || (!p.onGround && p.vy < 0 && p.jumping) ? 1 : 0 }; p.jumping = !!p.input.j; yield; }
+    stop(p);
+    yield* shuffleTo(p, () => pl.x + 30);
+    yield* wait(() => restB(d, r) > 0.3);
+    yield* walk(r, p, r.key.x + 10, () => r.key.holder === p.id);
+    yield* toDoor(r, p);
+  })());
+};
+// level 10: everyone queues at the ledge, boards the ferry while it rests, stands still, and walks off at the far dock
+const ferry = (r, ps) => {
+  const order = byX(ps), pl = r.sim.platforms[0], d = pl.d;
+  const slot = k => pl.x + d.w - PW - 6 - k * (PW + 3), queue = k => d.x - PW - 6 - k * (PW + 3);
+  return ps.map(p => (function* () {
+    const k = order.indexOf(p);
+    yield* shuffleTo(p, () => queue(k));
+    yield* wait(() => r.key.holder != null);
+    yield* wait(() => restA(d, r) > 2.0, 6000);
+    yield* shuffleTo(p, () => slot(k));
+    yield* wait(() => restB(d, r) > 0.4, 6000);
+    yield* toDoor(r, p);
+  })());
+};
+// level 11: the rightmost player bounces up spring A, then spring B (holding jump), takes the key; the rest wait for the door
+const trampolines = (r, ps) => {
+  const carrier = byX(ps)[0], a = r.grid[12].indexOf('S') * TILE, bCol = r.grid[8].indexOf('S'), b = bCol * TILE;
+  const l1 = r.grid[9].indexOf('#') * TILE, l2 = r.grid[3].indexOf('#') * TILE;
+  return ps.map(p => (function* () {
+    if (p !== carrier) { yield* wait(() => r.key.holder != null); yield* toDoor(r, p); return; }
+    yield* walk(r, p, a + 16, () => cx(p) > a + 6 && p.y + PH <= 12 * TILE + 2);
+    yield* climb(p, 9 * TILE, () => p.y + PH <= 9 * TILE + 0.5 && p.x + PW > l1, l1 + 24, 400);
+    yield* walk(r, p, b + 16, () => cx(p) > b + 6 && p.y + PH <= 8 * TILE + 2);
+    yield* climb(p, 3 * TILE, () => p.y + PH <= 3 * TILE + 0.5 && p.x + PW > l2, l2 + 24, 400);
+    yield* walk(r, p, r.key.x + 10, () => r.key.holder === p.id);
+    yield* toDoor(r, p);
+  })());
+};
+// level 12: the whole pack queues before each saw lane, waits until the blade will stay up for 2.4 s, then runs through
+const sawmill = (r, ps) => {
+  const order = byX(ps), lanes = [...r.sim.hazards].sort((a, b) => a.x - b.x);
+  const clear = (h, secs) => { for (let t = 0; t <= secs * 60; t += 3) if (moverPos(h.d, r.pt + t).y + h.h > 380) return false; return true; };
+  const queue = (lane, k) => lane.d.x - 36 - k * (PW + 3);
+  return ps.map(p => (function* () {
+    const k = order.indexOf(p);
+    for (const lane of lanes) { yield* shuffleTo(p, () => queue(lane, k)); yield* wait(() => clear(lane, 2.4), 4000); yield* shuffleTo(p, () => (lanes[lanes.indexOf(lane) + 1] ? queue(lanes[lanes.indexOf(lane) + 1], k) : lane.d.x + 3 * TILE)); }
+    yield* walk(r, p, r.key.x + 10, () => r.key.holder != null || r.key.gone);
+    yield* toDoor(r, p);
+  })());
+};
+
+const SCRIPTS = [solo, stack2, stack2, stack3, stack2Gate, solo, stack2Gate, stack4, elevator, ferry, trampolines, sawmill];
 let passed = 0;
 function check(label, fn) { try { fn(); console.log('  ok  ', label); passed++; } catch (e) { console.error('  FAIL', label, '-', e.message); process.exitCode = 1; } }
 
@@ -193,6 +264,28 @@ check('gate level: stays shut without the button, opens when pressed, closes ~4 
 check('level 8 key unreachable by only 3 players (needs 4)', () => {
   const res = run(3, 7, stack3, 60 * 40);
   assert(!res.won && res.r.key.holder == null, '3 players reached the 4-stack key');
+});
+
+check('level 9 key unreachable without the lift (no stack, no jump gets up there)', () => {
+  const res = run(1, 8, (r, ps) => [(function* () {
+    const ledge = r.grid[7].indexOf('#') * TILE; yield* walk(r, ps[0], ledge - 30);
+    for (let n = 0; n < 900; n++) { ps[0].input = { l: 0, r: n % 50 < 25 ? 1 : 0, j: 1 }; yield; }
+  })()], 60 * 20);
+  assert(!res.won && res.r.key.holder == null, 'a lone player reached the ledge key without the lift');
+});
+check('level 10: the pit cannot be jumped, only ferried', () => {
+  const res = run(2, 9, (r, ps) => ps.map(p => walk(r, p, 35 * TILE, () => inDoor(r, p), 3000)), 60 * 40);
+  assert(!res.won, 'players crossed the 13-tile pit without the ferry');
+});
+check('level 12: running through the saw lanes at the wrong moment gets you killed', () => {
+  const res = run(3, 11, (r, ps) => ps.map(p => (function* () { for (let i = 0; i < 150; i++) yield; yield* walk(r, p, 35 * TILE, () => inDoor(r, p), 3000); })()), 60 * 10);
+  assert(res.deaths > 0, 'nobody died running straight through the saws');
+});
+check('level 9 lift: a platform carries every player standing on it, and the key stays reachable', () => {
+  const r = new Room('E'); r.load(8); const ps = [0, 1, 2].map(i => r.add(fake(), 'e' + i)); for (let i = 0; i < 20; i++) r.update(1 / 60);
+  const pl = r.sim.platforms[0]; ps.forEach((p, i) => { p.x = pl.x + 6 + i * 28; p.y = pl.y - PH - 0.5; });
+  let top = Infinity; for (let i = 0; i < 60 * 9; i++) { ps.forEach(p => stop(p)); r.update(1 / 60); top = Math.min(top, ...ps.map(p => p.y)); }
+  assert(ps.every(p => !p.dead) && top < 224 - PH + 3, `riders: top y ${top.toFixed(0)}, dead ${ps.filter(p => p.dead).length}`);
 });
 
 console.log(`\n${passed} checks passed${process.exitCode ? ' (with FAILURES)' : ''}`);

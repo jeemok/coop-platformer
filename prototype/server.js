@@ -31,9 +31,11 @@ class Room {
     this.home = { x: L.key.x * TILE + 6, y: L.key.y * TILE + 6 };
     this.key = { x: this.home.x, y: this.home.y, holder: null, gone: false };
     this.doorOpen = false; this.win = 0;
+    this.pt = 0; this.sim.setMovers(L.movers);
     for (const p of this.players.values()) this.spawn(p);
-    this.send({ t: 'lvl', name: L.name, min: L.min, hint: L.hint, n: this.li + 1, of: LEVELS.length, grid: L.grid });
+    this.send(this.lvlMsg());
   }
+  lvlMsg() { const L = this.level; return { t: 'lvl', name: L.name, min: L.min, hint: L.hint, n: this.li + 1, of: LEVELS.length, grid: L.grid, mv: L.movers }; }
   spawn(p) {
     const sp = this.level.spawn;
     p.x = sp.x * TILE + p.slot * (PW + 2); p.y = (sp.y + 1) * TILE - PH - 1;
@@ -77,6 +79,7 @@ class Room {
   }
   update(dt) {
     this.consumeInputs();
+    this.pt++; for (const p of this.sim.movePlatforms(this.pt, null)) this.die(p); // platforms carry/push/crush
     if (this.win > 0) { this.win -= dt; if (this.win <= 0) this.load(this.li + 1); return; }
     for (const p of this.players.values()) {
       if (p.dead) { p.dead -= dt; if (p.dead <= 0) this.spawn(p); continue; }
@@ -85,6 +88,7 @@ class Room {
         if (p.y > this.sim.rows * TILE + 60 || this.spikes.some(s => ov(box(p), s))) { this.die(p); break; }
       }
     }
+    for (const p of this.players.values()) if (!p.dead && this.sim.hazards.some(h => ov(box(p), h))) this.die(p); // saw blades
     const alive = [...this.players.values()].filter(p => !p.dead);
     if (this.buttons.length) { // timed button: opens the gate for GATE_TIME s; stays open while anyone is inside it
       if (alive.some(p => this.buttons.some(b => ov(box(p), b)))) this.gateT = this.level.gateTime;
@@ -111,7 +115,7 @@ class Room {
   snap() {
     const r2 = v => Math.round(v * 100) / 100;
     this.send({ t: 's', p: [...this.players.values()].map(p => [p.id, r2(p.x), r2(p.y), p.dead ? 1 : 0, Math.round(p.vy), p.onGround ? 1 : 0, p.ack]),
-      k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0 });
+      k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], pt: this.pt, d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0 });
   }
   add(ws, nick) {
     const used = new Set([...this.players.values()].map(p => p.slot));
@@ -156,7 +160,7 @@ wss.on('connection', ws => {
       if (r.players.size >= MAX_PLAYERS) return ws.send(JSON.stringify({ t: 'err', m: `Room full (max ${MAX_PLAYERS})` }));
       room = r; me = r.add(ws, String(m.nick || 'Player').slice(0, 12));
       ws.send(JSON.stringify({ t: 'welcome', id: me.id, code }));
-      ws.send(JSON.stringify({ t: 'lvl', name: r.level.name, min: r.level.min, hint: r.level.hint, n: r.li + 1, of: LEVELS.length, grid: r.level.grid }));
+      ws.send(JSON.stringify(r.lvlMsg()));
       r.roster();
     } else if (m.t === 'ping') {
       ws.send(JSON.stringify({ t: 'pong', c: m.c }));
