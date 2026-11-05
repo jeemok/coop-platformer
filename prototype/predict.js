@@ -1,4 +1,4 @@
-// THROWAWAY PROTOTYPE. Client-side prediction + server reconciliation for the local player.
+// Client-side prediction + server reconciliation for the local player.
 // Pure logic (no DOM/network) so it can be unit-tested against a simulated laggy network.
 //
 // Flow:  every fixed tick the client calls setGhosts() then step(input) -> applies the input to a

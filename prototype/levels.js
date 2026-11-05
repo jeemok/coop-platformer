@@ -1,4 +1,4 @@
-// THROWAWAY PROTOTYPE. The campaign: long, hard levels built from reusable SEGMENTS (original design, not from Pico Park).
+// The campaign: long, hard levels built from reusable SEGMENTS (original design, not from Pico Park).
 // Legend: '#' solid, '^' spike, 'D' door, 'B' button, 'G' gate, 'S' spring, 'C' checkpoint flag, '.' empty.
 // A level is: a start zone, a list of segments laid end to end, then the door zone. Each segment draws its own terrain and
 // movers and records what it is (`segs`), so the bot tests can play any level by walking its segments in order.

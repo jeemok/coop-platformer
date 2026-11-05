@@ -1,4 +1,4 @@
-// THROWAWAY PROTOTYPE. The 12 original 40-tile levels. No longer in the game: kept as test fixtures for the mechanics.
+// The 12 original 40-tile levels. No longer in the game: kept as test fixtures for the mechanics.
 // (Original levels, not from Pico Park.)
 // Legend: '#' solid, '^' spike, 'D' door tile, '.' empty
 // Rule for level design: a stack is only ever needed to reach the KEY, which sits on a

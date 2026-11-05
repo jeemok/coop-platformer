@@ -1,4 +1,4 @@
-// THROWAWAY PROTOTYPE. Shared deterministic physics: runs on the server (authoritative) and in the
+// Shared deterministic physics: runs on the server (authoritative) and in the
 // browser (client-side prediction). Both MUST use exactly this code.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
