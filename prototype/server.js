@@ -9,11 +9,11 @@ const MAX_PLAYERS = +process.env.MAX_PLAYERS || 10;
 const MAX_ROOMS = +process.env.MAX_ROOMS || 50;
 const COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990'];
 const START_LEVEL = Math.max(0, (+process.env.START_LEVEL || 1) - 1); // dev only: START_LEVEL=6 starts new rooms on level 6
-const DT = 1 / 60, MAX_QUEUE = 30, IDLE_TICKS = 30, STARVE_TICKS = 6, GATE_TIME = 4, ZERO = { l: 0, r: 0, j: 0 };
+const DT = 1 / 60, MAX_QUEUE = 30, IDLE_TICKS = 30, STARVE_TICKS = 6, ZERO = { l: 0, r: 0, j: 0 };
 
 class Room {
-  constructor(code) {
-    this.code = code; this.sim = new Sim([]); this.players = this.sim.players; this.tick = 0; this.load(START_LEVEL);
+  constructor(code, startLevel) {
+    this.code = code; this.sim = new Sim([]); this.players = this.sim.players; this.tick = 0; this.load(startLevel == null ? START_LEVEL : startLevel);
   }
   get grid() { return this.sim.grid; }
   solid(tx, ty) { return this.sim.solid(tx, ty); }
@@ -87,7 +87,7 @@ class Room {
     }
     const alive = [...this.players.values()].filter(p => !p.dead);
     if (this.buttons.length) { // timed button: opens the gate for GATE_TIME s; stays open while anyone is inside it
-      if (alive.some(p => this.buttons.some(b => ov(box(p), b)))) this.gateT = GATE_TIME;
+      if (alive.some(p => this.buttons.some(b => ov(box(p), b)))) this.gateT = this.level.gateTime;
       else if (this.gateT > 0) this.gateT -= dt;
       if (alive.some(p => this.gates.some(g => ov(box(p), g)))) this.gateT = Math.max(this.gateT, 0.6);
       this.sim.gateOpen = this.gateT > 0;
@@ -127,9 +127,12 @@ class Room {
 let nextId = 0;
 const rooms = new Map();
 
+const LEVEL_LIST = JSON.stringify(LEVELS.map(l => ({ name: l.name, min: l.min })));
 const STATIC = { '/': ['public/index.html', 'text/html'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
 const server = http.createServer((req, res) => {
-  const f = STATIC[req.url.split('?')[0]];
+  const url = req.url.split('?')[0];
+  if (url === '/levels.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(LEVEL_LIST); }
+  const f = STATIC[url];
   if (!f) { res.writeHead(404); return res.end('Not found'); }
   res.writeHead(200, { 'Content-Type': f[1], 'Cache-Control': 'no-cache' });
   res.end(fs.readFileSync(path.join(__dirname, f[0])));
@@ -147,7 +150,8 @@ wss.on('connection', ws => {
       let r = rooms.get(code);
       if (!r) {
         if (rooms.size >= MAX_ROOMS) return ws.send(JSON.stringify({ t: 'err', m: 'Servers full, try again shortly' }));
-        r = new Room(code); rooms.set(code, r);
+        const lv = Number.isInteger(m.level) && m.level >= 0 && m.level < LEVELS.length ? m.level : undefined; // creator picks the start level
+        r = new Room(code, lv); rooms.set(code, r);
       }
       if (r.players.size >= MAX_PLAYERS) return ws.send(JSON.stringify({ t: 'err', m: `Room full (max ${MAX_PLAYERS})` }));
       room = r; me = r.add(ws, String(m.nick || 'Player').slice(0, 12));
@@ -158,6 +162,8 @@ wss.on('connection', ws => {
       ws.send(JSON.stringify({ t: 'pong', c: m.c }));
     } else if (m.t === 'in') {
       room.onInput(me, m);
+    } else if (m.t === 'go' && room.players.keys().next().value === me.id) { // host picks a level
+      if (Number.isInteger(m.l) && m.l >= 0 && m.l < LEVELS.length) room.load(m.l);
     } else if (m.t === 'restart' && room.players.keys().next().value === me.id) {
       room.load(room.li);
     }

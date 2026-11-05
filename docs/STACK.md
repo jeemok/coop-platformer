@@ -52,15 +52,17 @@ Last updated 2026-11-05 (after the first playtest). Everything here describes th
 
 - Fall off the map or touch spikes: only that player respawns after about 1.5 s; a carried key returns home.
 - A level is won when the key has reached the door (door opens) and **every** connected player is touching it.
-- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate). 7 levels; the last loops to the 1st.
-- **Timed gate (level 6):** standing on a `B` button opens every `G` gate for 4 s after the last press. A gate never
+- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate). 8 levels; the last loops to the 1st. The creator of a room picks the start level (`level` in the join message) and the host can switch with `{t:'go', l}`; `/levels.json` lists names for the pickers.
+- **Timed gate (levels 5 and 7):** standing on a `B` button opens every `G` gate for the level's `gateTime` (3.5 s and 3 s) after the last press. A gate never
   closes on a player standing inside it (it stays open at least 0.6 s after anyone is in it).
 - Players never visually overlap: remote players are nudged out of overlap at draw time (the local player's own box is exact).
 - **Level design rules learned the hard way** (each was a real bug caught by the bot tests):
   1. A stack may only be needed to reach the **key**, which sits on a floating platform. Never gate the path
      to the door behind a climb the last player cannot make: nobody can pull the last player up.
   2. The door must be wide enough for a full room (10 players) to touch it at once.
-  3. Keep hazards clear of the spawn row (10 players spawn across x = 32..290) and leave a run-up between
+  3. Hazards after the key platform must start at least ~4 tiles past its right edge (a player dropping off lands
+     about 3 tiles further on), and never right in front of the door: 10 players land in a pile.
+  4. Keep hazards clear of the spawn row (10 players spawn across x = 32..290) and leave a run-up between
      a pit and a following hazard.
 
 ## Hosting and cost
@@ -97,7 +99,7 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
   (we only see them 100 ms in the past).
 - No accounts, no reconnection slot-holding, no kick button, no payments, no sound. (All are in the design doc.)
 - Rooms live in server memory; a restart or free-tier spin-down drops everyone.
-- Level 4 needs 3+ players, level 7 needs 4+; difficulty with real humans is untested (bots pass them, which only proves they are solvable).
+- Level 4 needs 3+ players, level 8 needs 4+; difficulty with real humans is untested (bots pass them, which only proves they are solvable).
 - The jump is shorter than before (reach ~115 px horizontally), so pits must stay at 3 tiles or less.
 
 ## Next steps (if the prototype feels right)

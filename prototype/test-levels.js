@@ -24,7 +24,7 @@ function* walk(r, p, x, cond, max = 1500) {
     const at = (px, row) => r.grid[row] && r.grid[row][Math.floor(px / TILE)];
     const wall = r.solid(Math.floor(aheadX / TILE), ty);
     const spike = at(farX, ty) === '^';
-    const gap = !r.solid(Math.floor(aheadX / TILE), below);
+    let gap = true; for (let row = below; row < r.sim.rows; row++) if (r.solid(Math.floor(aheadX / TILE), row)) gap = false; // a real pit: nothing solid anywhere below
     p.input = { l: dir < 0 ? 1 : 0, r: dir > 0 ? 1 : 0, j: (p.onGround && (wall || spike || gap)) || (!p.onGround && p.vy < 0 && p.jumping) ? 1 : 0 };
     p.jumping = !!(p.input.j);
     yield;
@@ -124,11 +124,12 @@ const stack2 = stackN(2), stack3 = stackN(3), stack4 = stackN(4);
 // level 6: the leftmost player climbs the ledge, steps on the button and sprints for the gate;
 // everyone else waits for the gate to open, then heads for the key platform as a normal stack level.
 function* gatePrelude(r, p, presser, grp, ps) {
-  const gateX = r.gates[0].x, inStack = grp.includes(p);
+  const gateX = Math.max(...r.gates.map(g => g.x)), inStack = grp.includes(p);
   if (presser) {
     const btn = r.buttons[0];
-    yield* walk(r, p, 8 * TILE);
-    yield* climb(p, 10 * TILE, () => p.y + PH <= 10 * TILE + 0.5 && p.x + PW > 10 * TILE, 10 * TILE - 10);
+    const lx = r.grid[10].indexOf('#') * TILE; // the ledge holding the button
+    yield* walk(r, p, lx - 2 * TILE);
+    yield* climb(p, 10 * TILE, () => p.y + PH <= 10 * TILE + 0.5 && p.x + PW > lx, lx - 10);
     yield* walk(r, p, btn.x + btn.w / 2);
     // a spare presser sprints on to the door area; one who is part of the stack stops just past the gate
     if (inStack) yield* walk(r, p, gateX + 3 * TILE, () => p.x > gateX + TILE);
@@ -137,7 +138,7 @@ function* gatePrelude(r, p, presser, grp, ps) {
     yield* wait(() => r.sim.gateOpen);
     // players outside the stack go first and wait in the door area (out of the stack's way);
     // the stack members follow right behind them
-    if (inStack) yield* wait(() => ps.filter(q => !grp.includes(q)).every(q => q.x > gateX + 4));
+    for (let i = 0; i < 12 && inStack; i++) yield; // the stack members start a moment later (they are behind the rest anyway)
     yield* walk(r, p, inStack ? gateX + 3 * TILE : 32 * TILE, () => p.x > (inStack ? gateX + TILE : 31 * TILE));
   }
 }
@@ -145,7 +146,7 @@ const stack2Gate = stackN(2, gatePrelude, true);
 // level 1: everyone just walks to the door; the key is picked up on the way
 const solo = (r, ps) => ps.map(p => (function* () { yield* walk(r, p, r.key.x + 10, () => r.key.holder != null); yield* toDoor(r, p); })());
 
-const SCRIPTS = [solo, stack2, stack2, stack3, stack2, stack2Gate, stack4];
+const SCRIPTS = [solo, stack2, stack2, stack3, stack2Gate, solo, stack2Gate, stack4];
 let passed = 0;
 function check(label, fn) { try { fn(); console.log('  ok  ', label); passed++; } catch (e) { console.error('  FAIL', label, '-', e.message); process.exitCode = 1; } }
 
@@ -175,18 +176,23 @@ check('level 4 key unreachable by only 2 players (needs 3)', () => {
   assert(!res.won && res.r.key.holder == null, '2 players reached the 3-stack key');
 });
 
-check('level 6 gate: stays shut without the button, opens when pressed, closes ~4 s after', () => {
-  const res = run(2, 5, (r, ps) => ps.map(p => walk(r, p, 40 * TILE, () => false, 600)), 60 * 8); // everyone just runs at the gate
-  assert(!res.won && res.ps.every(p => p.x < 22 * TILE), 'players got past a closed gate');
-  const r = new Room('G'); r.load(5); const p = r.add(fake(), 'x');
+check('gate level: stays shut without the button, opens when pressed, closes ~4 s after', () => {
+  const res = run(2, 4, (r, ps) => ps.map(p => walk(r, p, 40 * TILE, () => false, 600)), 60 * 8); // everyone just runs at the gate
+  assert(!res.won && res.ps.every(p => p.x < 17 * TILE), 'players got past a closed gate');
+  const r = new Room('G'); r.load(4); const p = r.add(fake(), 'x');
   for (let i = 0; i < 30; i++) r.update(1 / 60);
   assert(!r.sim.gateOpen, 'gate open at start');
   const b = r.buttons[0]; p.x = b.x + 4; p.y = b.y - PH; r.update(1 / 60);
   assert(r.sim.gateOpen, 'gate did not open on button press');
   p.x = 5 * TILE; p.y = 388; let t = 0; while (r.sim.gateOpen && t < 600) { r.update(1 / 60); t++; }
-  assert(t > 200 && t < 280, `gate stayed open ${t} ticks (expected ~240)`);
+  const want = r.level.gateTime * 60; assert(t > want - 40 && t < want + 40, `gate stayed open ${t} ticks (expected ~${want})`);
   const g = r.gates[0]; r.gateT = 0.1; p.x = g.x + 4; p.y = g.y + 12 * TILE - PH - 1; for (let i = 0; i < 90; i++) r.update(1 / 60);
   assert(r.sim.gateOpen, 'gate closed on a player standing inside it');
+});
+
+check('level 8 key unreachable by only 3 players (needs 4)', () => {
+  const res = run(3, 7, stack3, 60 * 40);
+  assert(!res.won && res.r.key.holder == null, '3 players reached the 4-stack key');
 });
 
 console.log(`\n${passed} checks passed${process.exitCode ? ' (with FAILURES)' : ''}`);

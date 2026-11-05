@@ -4,6 +4,7 @@
 <style>
   html,body{margin:0;background:#1b1d2a;color:#eee;font-family:system-ui,sans-serif;height:100%}
   #join{max-width:360px;margin:12vh auto;padding:24px;background:#262a3d;border-radius:12px}
+  #join select{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;border-radius:8px;border:0;font-size:16px}
   #join input,#join button{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;border-radius:8px;border:0;font-size:16px}
   #join button{background:#4363d8;color:#fff;cursor:pointer}
   #err{color:#ff7b7b;min-height:1.2em}
@@ -12,18 +13,21 @@
   #bar{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;font-size:14px}
   #bar button{padding:4px 10px;border-radius:6px;border:0;cursor:pointer}
   #info{flex:1}
+  #lvlSel{padding:4px 6px;border-radius:6px;border:0;max-width:210px}
   #ping{font-variant-numeric:tabular-nums;opacity:.85}
 </style></head><body>
 <div id="join">
   <h2>Co-op Platformer <small>(prototype)</small></h2>
   <input id="nick" placeholder="Your nickname" maxlength="12">
   <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
+  <label style="font-size:13px;opacity:.8">Start at level (only used when you create a new room)</label>
+  <select id="startLevel"></select>
   <button id="go">Play</button>
   <div id="err"></div>
   <p style="font-size:13px;opacity:.7">Move: arrows / A D. Jump: space / W / up (hold = high, tap = hop). Stand on friends, push them, get the key to the door, then everyone enter the door. M = mute.</p>
 </div>
 <div id="game">
-  <div id="bar"><span id="info"></span><span id="ping"></span><button id="mute">Sound: on</button><button id="copy">Copy invite link</button><button id="restart">Restart level (host)</button></div>
+  <div id="bar"><span id="info"></span><span id="ping"></span><select id="lvlSel" title="Only the host (first player in the room) can change level"></select><button id="mute">Sound: on</button><button id="copy">Copy invite link</button><button id="restart">Restart level (host)</button></div>
   <canvas id="c"></canvas>
 </div>
 <script src="/sim.js"></script>
@@ -40,6 +44,18 @@ const pred = new Predictor();      // our own player: predicted locally, correct
 const remote = new Map();          // other players: id -> { samples: [{t,x,y}], dead }  (interpolated)
 let key = null, doorOpen = false, win = false, winAt = 0, gateT = 0, ping = 0, pingSeen = false;
 const inp = { l: 0, r: 0, j: 0 };
+
+// level list (names come from the server so there is one source of truth)
+let levelList = [];
+fetch('/levels.json').then(r => r.json()).then(list => {
+  levelList = list;
+  const opts = list.map((l, i) => `<option value="${i}">${l.name}${l.min > 1 ? `  (${l.min}+ players)` : ''}</option>`).join('');
+  $('startLevel').innerHTML = opts; $('lvlSel').innerHTML = opts;
+  $('startLevel').value = localStorage.getItem('startLevel') || '0';
+  if (!$('startLevel').value) $('startLevel').value = '0';
+  if (params.get('level')) $('startLevel').value = String(Math.max(0, +params.get('level') - 1));
+}).catch(() => {});
+$('lvlSel').onchange = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'go', l: +$('lvlSel').value })); $('lvlSel').blur(); };
 
 // ---------- sound (tiny synth, no assets) ----------
 let AC = null, muted = localStorage.getItem('mute') === '1';
@@ -69,13 +85,14 @@ $('go').onclick = () => {
   localStorage.setItem('nick', nick);
   code = $('room').value.trim().toUpperCase() || Math.random().toString(36).slice(2, 6).toUpperCase();
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick }));
+  const startLevel = +$('startLevel').value || 0; localStorage.setItem('startLevel', String(startLevel));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick, level: startLevel }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
     else if (m.t === 'welcome') { me = m.id; code = m.code; history.replaceState(null, '', '?room=' + code); $('join').style.display = 'none'; $('game').style.display = 'block'; resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
     else if (m.t === 'pong') { const rtt = performance.now() - m.c; ping = pingSeen ? ping * 0.7 + rtt * 0.3 : rtt; pingSeen = true; }
-    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid); gateT = 0; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
+    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid); gateT = 0; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
     else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
     else if (m.t === 's') {
       const now = performance.now();
@@ -214,7 +231,7 @@ function drawGate(tx, ty0, ty1, open, t) { // gate column from ty0..ty1 (tiles),
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, T, h); ctx.clip();
   const top = y + h - vis; // the gate retracts upward... drawn from the floor up so it "slides into the ceiling"
   ctx.fillStyle = g; ctx.fillRect(x + 2, y - (h - vis), T - 4, h);
-  for (let yy = y - (h - vis) + 10; yy < y + h; yy += 22) { ctx.fillStyle = '#2f3540'; ctx.fillRect(x + 2, yy, T - 4, 3); ctx.fillStyle = '#d9dee6'; ctx.fillRect(x + 6, yy + 5, 2, 2); ctx.fillRect(x + T - 8, yy + 5, 2, 2); }
+  for (let yy = y - (h - vis) + 10; yy < y + vis - 14; yy += 22) { ctx.fillStyle = '#2f3540'; ctx.fillRect(x + 2, yy, T - 4, 3); ctx.fillStyle = '#d9dee6'; ctx.fillRect(x + 6, yy + 5, 2, 2); ctx.fillRect(x + T - 8, yy + 5, 2, 2); }
   ctx.restore();
   // warning stripes on the bottom edge of the gate
   const by = y + vis - 12; ctx.save(); ctx.beginPath(); ctx.rect(x + 2, by, T - 4, 12); ctx.clip();
@@ -387,18 +404,17 @@ function draw(now) {
   if (door) { let inside = 0; for (const p of list) if (p.x < door.x + door.w && p.x + PW > door.x && p.y < door.y + door.h && p.y + PH > door.y) inside++; drawDoor(door, doorAnim, t, inside, roster.size); }
   if (tileCanvas) ctx.drawImage(tileCanvas, 0, 0);
   // dynamic tiles: spikes, buttons, gates
-  let gateCol = null;
+  const gates = new Map();
   grid.forEach((row, ty) => [...row].forEach((c, tx) => {
     const x = tx * T, y = ty * T;
     if (c === '^') drawSpike(x, y);
     else if (c === 'B') drawButton(x, y, gateT > 0);
-    else if (c === 'G') { if (!gateCol) gateCol = { tx, y0: ty, y1: ty }; else if (gateCol.tx === tx) gateCol.y1 = ty; }
+    else if (c === 'G') { const gc = gates.get(tx); if (!gc) gates.set(tx, { tx, y0: ty, y1: ty }); else gc.y1 = ty; }
   }));
-  if (gateCol) {
+  for (const gateCol of gates.values()) {
     const flicker = gateT > 0 && gateT < 1 && Math.floor(t * 8) % 2 === 0;
-    if (!flicker) drawGate(gateCol.tx, gateCol.y0, gateCol.y1, gateAnim, t);
-    else drawGate(gateCol.tx, gateCol.y0, gateCol.y1, Math.max(0, gateAnim - 0.5), t);
-    if (gateT > 0) { // countdown bar above the gate
+    drawGate(gateCol.tx, gateCol.y0, gateCol.y1, flicker ? Math.max(0, gateAnim - 0.5) : gateAnim, t);
+    if (gateT > 0) { // countdown bar above each gate
       const x = gateCol.tx * T + T / 2, w = Math.min(1, gateT / 4) * 44;
       ctx.fillStyle = 'rgba(20,22,35,.7)'; ctx.beginPath(); ctx.roundRect(x - 24, 8, 48, 12, 6); ctx.fill();
       ctx.fillStyle = gateT < 1.2 ? '#ff6b6b' : '#7be37b'; ctx.beginPath(); ctx.roundRect(x - 22, 10, Math.max(4, w), 8, 4); ctx.fill();
@@ -431,6 +447,7 @@ function draw(now) {
   $('info').textContent = `${lvlNo ? `Level ${lvlNo}/${lvlOf}: ` : ''}${lvlName}${lvlMin > 1 ? ' (needs ' + lvlMin + '+ players)' : ''} | room ${code} | ${roster.size} player${roster.size === 1 ? '' : 's'}${doorOpen ? ' | door open: everyone in!' : ''}`;
   if (pingSeen) { $('ping').textContent = Math.round(ping) + ' ms'; $('ping').style.color = ping < 80 ? '#7be37b' : ping < 160 ? '#ffd34d' : '#ff7b7b'; }
   $('restart').style.display = host === me ? '' : 'none';
+  $('lvlSel').disabled = host !== me;
 }
 
 // ?auto=1 joins immediately (handy for demos / screenshots)
