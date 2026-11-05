@@ -6,6 +6,7 @@ process.env.PORT = String(PORT);
 const { spawn } = require('child_process');
 const srv = spawn('node', ['server.js'], { env: { ...process.env, PORT: String(PORT), UNLOCK_KEYS: 'GOOD-KEY,OTHER-KEY' }, stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const until = async (fn, ms = 4000) => { for (let t = 0; t < ms && !fn(); t += 50) await sleep(50); }; // wait for a condition (robust on a busy machine)
 const get = p => new Promise((res, rej) => http.get({ host: '127.0.0.1', port: PORT, path: p }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => res(d)); }).on('error', rej));
 function client(room, nick, level) {
   const c = { lvls: [], ws: new WebSocket('ws://127.0.0.1:' + PORT) };
@@ -56,17 +57,18 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   check('10 phones fit, the 11th is refused, and a second screen can still watch a full room', () => { assert(eleventh.err && /full/i.test(eleventh.err), 'no full error'); assert(!scr2.err && scr2.id && scr2.id.screen, 'second screen refused'); });
   for (const c of [scr, pad1, pad2, scr2, eleventh, ...extra]) c.ws.close();
   console.log('Paid unlock (free rooms hold 5, a paid host unlocks 10):');
-  const free = ['a', 'b', 'c', 'd', 'e'].map(n => node('FREE1', undefined, n)); await sleep(400);
-  const sixth = node('FREE1', undefined, 'f'); await sleep(250);
+  const free = []; for (const n of ['a', 'b', 'c', 'd', 'e']) { const c = node('FREE1', undefined, n); free.push(c); await until(() => c.id); } // one at a time: the first to join is the host
+  await until(() => free.every(c => c.roster && c.roster.p.length === 5));
+  const sixth = node('FREE1', undefined, 'f'); await until(() => sixth.err);
   check('a free room holds 5 and the 6th is told to ask the host to unlock', () => { assert.strictEqual(free[4].roster.p.length, 5); assert(sixth.err && sixth.full === 1, 'not refused'); assert.strictEqual(free[0].roster.cap, 5); });
-  free[0].ws.send(JSON.stringify({ t: 'unlock', key: 'nope' })); await sleep(250);
+  free[0].ws.send(JSON.stringify({ t: 'unlock', key: 'nope' })); await until(() => free[0].uerr);
   check('a wrong key is rejected', () => { assert(free[0].uerr); assert(!free[0].unlocked); });
   free[1].ws.send(JSON.stringify({ t: 'unlock', key: 'GOOD-KEY' })); await sleep(250);
   check('only the host can unlock', () => assert(!free[1].unlocked));
-  free[0].ws.send(JSON.stringify({ t: 'unlock', key: 'GOOD-KEY' })); await sleep(250);
-  const more = ['g', 'h', 'i', 'j', 'm'].map(n => node('FREE1', undefined, n)); const over = node('FREE1', undefined, 'k'); await sleep(500);
+  free[0].ws.send(JSON.stringify({ t: 'unlock', key: 'GOOD-KEY' })); await until(() => free[0].unlocked);
+  const more = ['g', 'h', 'i', 'j', 'm'].map(n => node('FREE1', undefined, n)); const over = node('FREE1', undefined, 'k'); await until(() => over.err && free[0].roster.p.length === 10);
   check('after the host unlocks, the room holds 10 (and not 11)', () => { assert(free[0].unlocked); assert.strictEqual(free[0].roster.cap, 10); assert.strictEqual(free[0].roster.p.length, 10); assert(over.err && !over.full, 'cap not 10'); });
-  const paidRoom = node('PAID1', undefined, 'p0', undefined, 'OTHER-KEY'); await sleep(250);
+  const paidRoom = node('PAID1', undefined, 'p0', undefined, 'OTHER-KEY'); await until(() => paidRoom.id);
   const guests = Array.from({ length: 9 }, (_, i) => node('PAID1', undefined, 'g' + i)); await sleep(500);
   check('a room created with a valid key is unlocked from the start', () => { assert.strictEqual(paidRoom.roster.cap, 10); assert.strictEqual(paidRoom.roster.p.length, 10); });
   const badCreate = node('BADK1', undefined, 'x', undefined, 'wrong'); await sleep(250);
