@@ -29,10 +29,16 @@ For friends in the same room. One laptop shows the game and a QR code; everyone 
 ## The game
 
 - 1-10 players per room. Free rooms hold 5; the host can unlock 10 with a one-time **Party Pack** key (see [Payments](#payments-and-support)).
-- 8 long levels (150-355 tiles, 4-11 screens) with checkpoints, a mini-map, a level picker and a room host who can switch levels.
+- 8 free levels plus 4 **Party Pack** levels (150-420 tiles, 4-13 screens) with checkpoints, a mini-map, a level picker and a room host who can switch levels.
 - Moving platforms (lifts and ferries), saw lanes, spring pads, timed gates with buttons, stack-to-reach keys, spike gardens.
 - Fair by test: bots play every level with the minimum number of players, +2 and a full room of 10, and nobody may die, so each level is provably solvable.
 - Controls: arrows or A/D to move, Space/W/Up to jump (hold = high, tap = hop), M = mute.
+
+### Party Pack levels (7-10 players)
+
+Four extra levels for unlocked rooms only, built around the **choir gate**: a row of purple buttons that must *all* be held at the same moment by different players, which opens a gate for a few seconds so the whole choir can sprint through. Level 9 needs 7 players, level 10 needs 8, level 11 needs 9 and level 12 needs all 10, combined with saws, lifts, ferries and stack climbs. Bots prove each one is solvable and that one player fewer cannot finish.
+
+![Choir gate](docs/screenshots/party-pack.png)
 
 ## Payments and support
 
@@ -56,7 +62,7 @@ cd prototype
 npm test
 ```
 
-108 automated checks plus physics assertions, all headless:
+124 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|

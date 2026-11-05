@@ -14,7 +14,7 @@ Source: https://github.com/jeemok/coop-platformer
 - Two modes:
   - **Online**: each person opens the site on their own laptop or phone and joins the same room code.
   - **One screen**: for people in the same room. One laptop picks "One screen" and shows the game plus a QR code. Everyone else scans the QR (or opens `/pad?room=CODE`) on their phone and uses it as a controller (hold sideways: left, right, jump).
-- 8 long levels (150-355 tiles); levels 3-8 need 2-4 or more players. Free rooms hold 5 players; a host can unlock up to 10 with a one-time Party Pack key. Donations: https://buymeacoffee.com/jeemok
+- 12 long levels: 8 free (levels 3-8 need 2-4 or more players) and 4 Party Pack levels (9-12, need 7, 8, 9 and 10 players; host-unlocked rooms only). Party Pack levels use "choir gates": every button in a row must be held by a different player at the same time. Free rooms hold 5 players; a host can unlock up to 10 with a one-time Party Pack key. Donations: https://buymeacoffee.com/jeemok
 
 ## Technical notes (for agents/developers)
 

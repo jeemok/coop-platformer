@@ -38,7 +38,7 @@
   <div id="err"></div>
 </div>
 <div id="pad">
-  <div id="top"><span id="dot"></span><span id="who"></span><span id="lvl"></span></div>
+  <div id="top"><span id="dot"></span><span id="who"></span><span id="ping" style="opacity:.7;font-variant-numeric:tabular-nums"></span><span id="lvl"></span></div>
   <div id="msg"></div>
   <div class="btn" id="left">&#9664;</div>
   <div class="btn" id="right">&#9654;</div>
@@ -87,11 +87,12 @@ function join() {
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); ws = null; }
     else if (m.t === 'welcome') {
       me = m.id; $('join').style.display = 'none'; $('pad').style.display = 'block'; $('who').textContent = nick;
-      timer = setInterval(send, 250); // keep-alive: the server stops a player whose phone goes quiet
+      timer = setInterval(send, 250); setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 1500); // keep-alive: the server stops a player whose phone goes quiet
       try { navigator.wakeLock && navigator.wakeLock.request('screen'); } catch (e) {}
       try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); } catch (e) {}
       try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
-    } else if (m.t === 'lvl') { $('lvl').textContent = `Level ${m.n}/${m.of}: ${m.name.replace(/^\d+\.\s*/, '')}`; }
+    } else if (m.t === 'pong') { const ms = Math.round(performance.now() - m.c); $('ping').textContent = ms + ' ms'; $('ping').style.color = ms < 60 ? '#7be37b' : ms < 120 ? '#ffd23f' : '#ff7b7b'; }
+    else if (m.t === 'lvl') { $('lvl').textContent = `Level ${m.n}/${m.of}: ${m.name.replace(/^\d+\.\s*/, '')}`; }
     else if (m.t === 'roster') { const p = m.p.find(q => q.id === me); if (p) $('dot').style.background = p.color; $('msg').textContent = m.scr ? '' : 'No big screen is connected to this room'; }
   };
   ws.onclose = () => { clearInterval(timer); if ($('pad').style.display === 'block') { $('msg').textContent = 'Disconnected. Tap to rejoin'; $('msg').style.pointerEvents = 'auto'; $('msg').onclick = () => location.reload(); } };

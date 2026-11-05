@@ -10,30 +10,39 @@ const MAX_PLAYERS = +process.env.MAX_PLAYERS || 10;
 const FREE_PLAYERS = +process.env.FREE_PLAYERS || 5; // rooms above this need the paid unlock (up to MAX_PLAYERS)
 const DONATE_URL = process.env.DONATE_URL || 'https://buymeacoffee.com/jeemok';
 const BUY_URL = process.env.BUY_URL || '';
+const FREE_LEVELS = LEVELS.filter(l => !l.premium).length; // levels after these need an unlocked room
 const MAX_ROOMS = +process.env.MAX_ROOMS || 50;
 const COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990'];
 const START_LEVEL = Math.max(0, (+process.env.START_LEVEL || 1) - 1); // dev only: START_LEVEL=6 starts new rooms on level 6
 const DT = 1 / 60, MAX_QUEUE = 30, IDLE_TICKS = 30, STARVE_TICKS = 6, ZERO = { l: 0, r: 0, j: 0 };
 
 class Room {
-  constructor(code, startLevel) {
-    this.code = code; this.unlocked = false; this.screens = new Set(); this.sim = new Sim([]); this.players = this.sim.players; this.tick = 0; this.load(startLevel == null ? START_LEVEL : startLevel);
+  constructor(code, startLevel, unlocked) {
+    this.code = code; this.unlocked = !!unlocked || !!process.env.UNLOCK_ALL; /* UNLOCK_ALL: dev only */ this.screens = new Set(); this.sim = new Sim([]); this.players = this.sim.players; this.tick = 0; this.load(startLevel == null ? START_LEVEL : startLevel);
   }
   cap() { return this.unlocked ? MAX_PLAYERS : FREE_PLAYERS; }
   get grid() { return this.sim.grid; }
   solid(tx, ty) { return this.sim.solid(tx, ty); }
   load(i) {
-    const L = typeof i === 'object' ? i : LEVELS[i % LEVELS.length]; // (an object = a test fixture level)
-    this.li = typeof i === 'object' ? 0 : i % LEVELS.length;
+    if (typeof i !== 'object') { i = i % LEVELS.length; if (LEVELS[i].premium && !this.unlocked) i = 0; } // Party Pack levels only in unlocked rooms
+    const L = typeof i === 'object' ? i : LEVELS[i]; // (an object = a test fixture level)
+    this.li = typeof i === 'object' ? 0 : i;
     this.level = L; this.sim.setGrid(L.grid);
-    this.doors = []; this.spikes = []; this.buttons = []; this.gates = []; this.cps = []; this.spawnCol = +process.env.SPAWN_COL || L.spawn.x; // (SPAWN_COL: dev only, start further along) this.gateT = 0; this.sim.gateOpen = false;
+    this.doors = []; this.choirBtns = []; this.choirGates = []; this.spikes = []; this.buttons = []; this.gates = []; this.cps = []; this.spawnCol = +process.env.SPAWN_COL || L.spawn.x; // (SPAWN_COL: dev only, start further along) this.gateT = 0; this.sim.gateOpen = false;
     L.grid.forEach((row, ty) => [...row].forEach((c, tx) => {
       if (c === 'D') this.doors.push({ x: tx * TILE, y: ty * TILE, w: TILE, h: TILE });
       if (c === 'B') this.buttons.push({ x: tx * TILE + 2, y: ty * TILE + 18, w: TILE - 4, h: TILE - 18 });
+      if (c === 'b') this.choirBtns.push({ x: tx * TILE + 2, y: ty * TILE + 18, w: TILE - 4, h: TILE - 18, tx });
+      if (c === 'g') this.choirGates.push({ x: tx * TILE, y: ty * TILE, w: TILE, h: TILE, tx });
       if (c === 'G') this.gates.push({ x: tx * TILE, y: ty * TILE, w: TILE, h: TILE });
       if (c === 'C') this.cps.push({ x: tx * TILE + 8, y: ty * TILE, w: TILE - 16, h: TILE, col: tx - 10 }); // checkpoint flag: respawns move here
       if (c === '^') this.spikes.push({ x: tx * TILE + 6, y: ty * TILE + 16, w: TILE - 12, h: TILE - 16 });
     }));
+    // choir groups: each 'g' gate column is opened by the 'b' buttons between the previous gate and it; ALL must be held at once
+    const gcols = [...new Set(this.choirGates.map(g => g.tx))].sort((a, b) => a - b);
+    this.groups = gcols.map(tx => ({ tx, t: 0, btns: [], gates: this.choirGates.filter(g => g.tx === tx) }));
+    for (const b of this.choirBtns) { const g = this.groups.find(q => q.tx >= b.tx); if (g) g.btns.push(b); }
+    this.sim.gateMap = {}; this.choirDown = [];
     this.home = { x: L.key.x * TILE + 6, y: L.key.y * TILE + 6 };
     this.key = { x: this.home.x, y: this.home.y, holder: null, gone: false };
     this.doorOpen = false; this.win = 0;
@@ -41,7 +50,7 @@ class Room {
     for (const p of this.players.values()) this.spawn(p);
     this.send(this.lvlMsg());
   }
-  lvlMsg() { const L = this.level; return { t: 'lvl', name: L.name, min: L.min, hint: L.hint, n: this.li + 1, of: LEVELS.length, grid: L.grid, mv: L.movers }; }
+  lvlMsg() { const L = this.level; return { t: 'lvl', name: L.name, min: L.min, hint: L.hint, n: this.li + 1, of: this.unlocked ? LEVELS.length : FREE_LEVELS, premium: !!L.premium, grid: L.grid, mv: L.movers }; }
   spawn(p) {
     const sp = { x: this.spawnCol, y: this.level.spawn.y };
     p.x = sp.x * TILE + p.slot * (PW + 2); p.y = (sp.y + 1) * TILE - PH - 1;
@@ -102,6 +111,17 @@ class Room {
       if (alive.some(p => this.gates.some(g => ov(box(p), g)))) this.gateT = Math.max(this.gateT, 0.6);
       this.sim.gateOpen = this.gateT > 0;
     }
+    if (this.groups.length) { // choir gates
+      const pressed = b => alive.some(p => ov(box(p), b)), down = new Set();
+      for (const g of this.groups) {
+        for (const b of g.btns) if (pressed(b)) down.add(b.tx);
+        if (g.btns.length && g.btns.every(b => pressed(b))) g.t = this.level.choirTime;
+        else if (g.t > 0) g.t -= dt;
+        if (alive.some(p => g.gates.some(q => ov(box(p), q)))) g.t = Math.max(g.t, 0.6);
+        this.sim.gateMap[g.tx] = g.t > 0;
+      }
+      this.choirDown = [...down];
+    }
     for (const c of this.cps) if (c.col > this.spawnCol && alive.some(p => ov(box(p), c))) this.spawnCol = c.col; // reached a checkpoint
     const k = this.key;
     if (!k.gone) {
@@ -122,7 +142,7 @@ class Room {
   snap() {
     const r2 = v => Math.round(v * 100) / 100;
     this.send({ t: 's', p: [...this.players.values()].map(p => [p.id, r2(p.x), r2(p.y), p.dead ? 1 : 0, Math.round(p.vy), p.onGround ? 1 : 0, p.ack]),
-      k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], pt: this.pt, c: this.spawnCol, d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0 });
+      k: this.key.gone ? null : [Math.round(this.key.x), Math.round(this.key.y), this.key.holder || 0], pt: this.pt, c: this.spawnCol, d: this.doorOpen ? 1 : 0, g: this.gateT > 0 ? Math.round(this.gateT * 10) / 10 : 0, w: this.win > 0 ? 1 : 0, ...(this.groups.length ? { cg: this.groups.map(g => [g.tx, g.t > 0 ? Math.round(g.t * 10) / 10 : 0]), cb: this.choirDown } : {}) });
   }
   add(ws, nick, pad) {
     const used = new Set([...this.players.values()].map(p => p.slot));
@@ -138,7 +158,7 @@ class Room {
 let nextId = 0;
 const rooms = new Map();
 
-const LEVEL_LIST = JSON.stringify(LEVELS.map(l => ({ name: l.name, min: l.min })));
+const LEVEL_LIST = JSON.stringify(LEVELS.map(l => ({ name: l.name, min: l.min, premium: !!l.premium })));
 const STATIC = { '/': ['public/index.html', 'text/html'], '/pad': ['public/pad.html', 'text/html'], '/llms.txt': ['public/llms.txt', 'text/plain; charset=utf-8'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
@@ -166,8 +186,7 @@ wss.on('connection', ws => {
       if (!r) {
         if (rooms.size >= MAX_ROOMS) return ws.send(JSON.stringify({ t: 'err', m: 'Servers full, try again shortly' }));
         const lv = Number.isInteger(m.level) && m.level >= 0 && m.level < LEVELS.length ? m.level : undefined; // creator picks the start level
-        r = new Room(code, lv); rooms.set(code, r);
-        if (paid) r.unlocked = true; // the creator paid: this room holds up to MAX_PLAYERS
+        r = new Room(code, lv, paid); rooms.set(code, r); // a paying creator unlocks 10 players and the Party Pack levels
       } else if (paid && !r.unlocked && r.players.size === 0) r.unlocked = true;
       room = r;
       if (m.role === 'screen') { // one-screen mode: this connection only watches (and can pick levels); phones join as players
@@ -181,13 +200,13 @@ wss.on('connection', ws => {
       r.roster();
     } else if (m.t === 'unlock' && (me.screen || room.players.keys().next().value === me.id)) { // host pays for 6-10 players
       const ok = await tryKey(m.key);
-      if (ok) { room.unlocked = true; room.roster(); ws.send(JSON.stringify({ t: 'unlocked' })); } else ws.send(JSON.stringify({ t: 'uerr', m: 'That key was not accepted' }));
+      if (ok) { room.unlocked = true; room.roster(); room.send(room.lvlMsg()); ws.send(JSON.stringify({ t: 'unlocked' })); } else ws.send(JSON.stringify({ t: 'uerr', m: 'That key was not accepted' }));
     } else if (m.t === 'ping') {
       ws.send(JSON.stringify({ t: 'pong', c: m.c }));
     } else if (m.t === 'in') {
       if (!me.screen) room.onInput(me, m);
     } else if (m.t === 'go' && (me.screen || room.players.keys().next().value === me.id)) { // host picks a level
-      if (Number.isInteger(m.l) && m.l >= 0 && m.l < LEVELS.length) room.load(m.l);
+      if (Number.isInteger(m.l) && m.l >= 0 && m.l < LEVELS.length) { if (LEVELS[m.l].premium && !room.unlocked) ws.send(JSON.stringify({ t: 'uerr', m: 'That level is part of the Party Pack. Unlock the room first.' })); else room.load(m.l); }
     } else if (m.t === 'restart' && (me.screen || room.players.keys().next().value === me.id)) {
       room.load(room.li);
     }
@@ -208,7 +227,8 @@ function startLoop() {
     acc += Math.min(Number(now - last) / 1e9, 0.25); last = now;
     while (acc >= DT) {
       acc -= DT;
-      for (const r of rooms.values()) { r.update(DT); if (++r.tick % 2 === 0) r.snap(); }
+      // snapshots: 30 Hz, or 60 Hz when a shared screen is watching (phones have no prediction, so every ms counts)
+      for (const r of rooms.values()) { r.update(DT); if (++r.tick % 2 === 0 || r.screens.size) r.snap(); }
     }
   }, 5);
 }

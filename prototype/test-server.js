@@ -71,6 +71,18 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   check('a room created with a valid key is unlocked from the start', () => { assert.strictEqual(paidRoom.roster.cap, 10); assert.strictEqual(paidRoom.roster.p.length, 10); });
   const badCreate = node('BADK1', undefined, 'x', undefined, 'wrong'); await sleep(250);
   check('a room created with a bad key is just a free room', () => { assert(badCreate.id); assert.strictEqual(badCreate.roster.cap, 5); });
+  console.log('Party Pack levels:');
+  const fl = node('PREM1', undefined, 'h', 8); await sleep(250);
+  check('a free room asked to start on a premium level starts on level 1', () => assert.deepStrictEqual(fl.lvls, [1]));
+  fl.ws.send(JSON.stringify({ t: 'go', l: 8 })); await sleep(250);
+  check('the host of a free room cannot switch to a premium level', () => { assert(fl.uerr && /Party Pack/.test(fl.uerr)); assert.deepStrictEqual(fl.lvls, [1]); });
+  fl.ws.send(JSON.stringify({ t: 'unlock', key: 'GOOD-KEY' })); await sleep(250); fl.ws.send(JSON.stringify({ t: 'go', l: 8 })); await sleep(250);
+  check('once unlocked the host can go to a premium level', () => assert.strictEqual(fl.lvls[fl.lvls.length - 1], 9));
+  const pr = node('PREM2', undefined, 'h', 11, 'GOOD-KEY'); await sleep(250);
+  check('a paying creator can start straight on level 12', () => assert.deepStrictEqual(pr.lvls, [12]));
+  const lj = JSON.parse(await get('/levels.json'));
+  check('/levels.json marks exactly the last 4 levels as premium', () => assert.deepStrictEqual(lj.map(l => l.premium), [...Array(8).fill(false), ...Array(4).fill(true)]));
+  fl.ws.close(); pr.ws.close(); await sleep(150);
   const cfg = JSON.parse(await get('/config.json'));
   check('/config.json exposes the donate link and caps', () => { assert(/buymeacoffee\.com\/jeemok/.test(cfg.donate)); assert.strictEqual(cfg.free, 5); assert.strictEqual(cfg.max, 10); });
   for (const c of [...free, sixth, ...more, over, paidRoom, ...guests, badCreate]) c.ws.close();

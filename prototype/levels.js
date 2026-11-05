@@ -58,6 +58,13 @@ const springKey = () => ({ type: 'springKey', w: 24, build(g, x0) {
   return { x: x0 + 15, y: 2 };
 } });
 
+// choir: n buttons in a row (2 tiles apart, so one player cannot cover two). The gate ahead opens only while ALL n are held at the same
+// moment, then stays open `choirTime` s, so the n pressers must sprint through together. Needs at least n players. ('b' = button, 'g' = gate)
+const choir = n => ({ type: 'choir', w: 8 + 2 * n + 3 + 8, n, build(g, x0) {
+  for (let i = 0; i < n; i++) g[12][x0 + 8 + 2 * i] = 'b';
+  rect(g, x0 + 8 + 2 * n + 2, 0, 1, 13, 'g');
+} });
+
 function level(name, min, hint, segs, opts = {}) {
   const movers = []; let x = START, key = null;
   const width = START + segs.reduce((a, s) => a + s.w, 0) + DOOR_ZONE;
@@ -65,7 +72,7 @@ function level(name, min, hint, segs, opts = {}) {
   const placed = segs.map(s => { const x0 = x; const k = s.build(g, x0, movers); if (k) key = k; x += s.w; return { ...s, x0, build: undefined }; });
   rect(g, width - 9, 10, 8, 3, 'D'); // door: wide enough for 10 players at once
   if (!key) throw new Error(`${name}: no key`);
-  return { name, min, hint, movers, gateTime: opts.gateTime || 3.5, spawn: { x: 1, y: 12 }, key, segs: placed, grid: g.map(r => r.join('')) };
+  return { name, min, hint, movers, premium: !!opts.premium, choirTime: opts.choirTime || 7, gateTime: opts.gateTime || 3.5, spawn: { x: 1, y: 12 }, key, segs: placed, grid: g.map(r => r.join('')) };
 }
 
 // Hazard spacing (checked by the bots): 2+ free tiles between a pit and the next hazard, nothing within ~4 tiles after a drop-off.
@@ -167,6 +174,65 @@ const LEVELS = [
     ferry(13, 5, { phase: 3, move: 2.0, rest: 1.9 }),
     terrain(24, [...stones(2, 4), ['spike', 20, 2]]),
   ], { gateTime: 3.6 }),
+
+  // ---- Party Pack levels: rooms of 7-10 players only. Every one has "choir" gates, which need a different player on every button. ----
+  level('9. Choir practice', 7, 'Seven buttons, seven players, one gate. Everyone hold your button, then sprint when it opens.', [
+    terrain(24, [['spike', 6, 2], ['pit', 12, 3], ['wall', 19, 2, 2]]),
+    choir(7),
+    terrain(22, [...garden(3)]),
+    rest(),
+    saws(3, HARD_SAWS),
+    stackKey(4),
+    ferry(12, 9),
+    rest(),
+    choir(7),
+    terrain(26, [...stones(2, 4), ['spike', 18, 2], ['wall', 22, 2, 2]]),
+  ], { premium: true }),
+  level('10. Eight-part harmony', 8, 'Eight voices, three gates, and the saws do not wait for you.', [
+    terrain(22, [...garden(3), ['pit', 18, 3]]),
+    choir(8),
+    saws(2, HARD_SAWS),
+    rest(),
+    lift(16, [['spike', 5, 2], ['spike', 10, 2]]),
+    choir(8),
+    terrain(22, [['wall', 4, 2, 2], ...stones(2, 8)]),
+    rest(),
+    stackKey(4),
+    ferry(13, 9, { phase: 3 }),
+    choir(8),
+    terrain(24, [...garden(3)]),
+  ], { premium: true }),
+  level('11. Nine lives', 9, 'Nine buttons at a time. One slip and the whole choir starts again.', [
+    terrain(24, [['spike', 6, 2], ['spike', 10, 2], ['pit', 15, 3]]),
+    choir(9),
+    saws(3, HARD_SAWS),
+    rest(),
+    stackKey(4),
+    ferry(12, 9),
+    choir(9),
+    rest(),
+    lift(14, [['spike', 4, 2], ['spike', 9, 2]]),
+    terrain(24, [...stones(3, 4)]),
+    choir(9),
+    saws(2, HARD_SAWS),
+    terrain(22, [['spike', 6, 2], ['wall', 14, 2, 2]]),
+  ], { premium: true }),
+  level('12. The full house', 10, 'All ten of you, on all ten buttons, three times. The grand finale.', [
+    terrain(26, [...garden(4), ['pit', 20, 3]]),
+    choir(10),
+    saws(3, HARD_SAWS),
+    rest(),
+    stackKey(4),
+    lift(14, [['spike', 4, 2], ['spike', 9, 2]]),
+    choir(10),
+    rest(),
+    ferry(13, 9, { phase: 2, move: 2.0, rest: 1.9 }),
+    terrain(24, [...stones(2, 4), ['spike', 18, 2]]),
+    choir(10),
+    saws(2, HARD_SAWS),
+    rest(),
+    terrain(28, [...garden(4), ['wall', 24, 2, 2]]),
+  ], { premium: true }),
 ];
 
 module.exports = { LEVELS, TILE, H };

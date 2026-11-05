@@ -31,7 +31,7 @@
   }
 
   class Sim {
-    constructor(grid) { this.players = new Map(); this.gateOpen = false; this.platforms = []; this.hazards = []; this.setGrid(grid || []); }
+    constructor(grid) { this.players = new Map(); this.gateOpen = false; this.gateMap = {}; this.platforms = []; this.hazards = []; this.setGrid(grid || []); }
     // defs: [{kind:'plat'|'saw', x,y,w,h (px, top-left at rest at A), ax,ay (px travel to B), move,dwellA,dwellB,phase (s)}]
     setMovers(defs) {
       this.platforms = []; this.hazards = [];
@@ -70,7 +70,7 @@
     solid(tx, ty) {
       if (tx < 0 || tx >= this.cols) return true; if (ty < 0 || ty >= this.rows) return false;
       const c = this.grid[ty][tx];
-      return c === '#' || c === 'S' || (c === 'G' && !this.gateOpen); // 'G' = gate: solid until a button opens it
+      return c === '#' || c === 'S' || (c === 'G' && !this.gateOpen) || (c === 'g' && !this.gateMap[tx]); // 'G' = gate: solid until a button opens it
     }
     hitsTile(p) {
       const e = 1e-4;

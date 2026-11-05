@@ -64,11 +64,19 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
 
 Free rooms hold `FREE_PLAYERS` (5). A key (from the join message, or `{t:'unlock'}` from the host/screen) is checked by `license.js`: `UNLOCK_KEYS` first, then Lemon Squeezy `POST /v1/licenses/validate` (no secret needed; must be `status: active` and `meta.product_id == LS_PRODUCT_ID`; positives cached 10 min). Valid means `room.unlocked = true` and the cap is `MAX_PLAYERS` (10) until the room empties. A provider outage never unlocks. Five bad keys per connection are tolerated. Limitation: a key is not bound to one room or limited by activations, so a leaked key works for anyone.
 
+## Choir gates and Party Pack levels
+
+Levels 9-12 are `premium: true`; `Room.load` falls back to level 1 if the room is not unlocked and the host's `go` is refused with a message. A choir segment draws `n` `b` buttons (2 tiles apart, so one player cannot cover two) and a `g` gate column. The server groups each `g` column with the `b` buttons since the previous `g`; the gate opens while every button in its group is held at once and stays open `choirTime` (7 s) after the last moment they were, or while someone is inside it. State is `sim.gateMap[column]`, shared with the client predictor (`setChoir`), and snapshots carry `cg` (per-gate timers) and `cb` (held buttons) only on levels that have choir gates. The old `B`/`G` timed gates are untouched.
+
+## Latency (phones)
+
+A phone controller sends unnumbered inputs and has no prediction, so its delay is: phone to server one-way + up to 16 ms server tick + snapshot interval + the shared screen's interpolation buffer + server to screen. Rooms with a screen therefore get 60 Hz snapshots (16 ms) and the screen interpolates only 60 ms behind (100 ms and 30 Hz otherwise). The controller shows its round-trip time (green under 60 ms). The part we cannot fix in code is the route phone, cloud server, laptop: if the phone is on mobile data and the server is far away, that alone can exceed 100 ms.
+
 ## Gameplay rules
 
 - Fall off the map or touch spikes: only that player respawns after about 1.5 s; a carried key returns home.
 - A level is won when the key has reached the door (door opens) and **every** connected player is touching it.
-- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate, `S` spring) plus a `movers` list (platforms, saws). 8 long levels (150-355 tiles, built from segments, see below); the last loops to the 1st. The creator of a room picks the start level (`level` in the join message) and the host can switch with `{t:'go', l}`; `/levels.json` lists names for the pickers.
+- Levels are ASCII grids in `levels.js` (`#` solid, `^` spike, `D` door, `B` button, `G` gate, `S` spring) plus a `movers` list (platforms, saws). 12 long levels (8 free + 4 Party Pack, built from segments, see below); the last loops to the 1st. The creator of a room picks the start level (`level` in the join message) and the host can switch with `{t:'go', l}`; `/levels.json` lists names for the pickers.
 - **Timed gate (levels 5 and 7):** standing on a `B` button opens every `G` gate for the level's `gateTime` (3.5 s and 3 s) after the last press. A gate never
   closes on a player standing inside it (it stays open at least 0.6 s after anyone is in it).
 - Players never visually overlap: remote players are nudged out of overlap at draw time (the local player's own box is exact).

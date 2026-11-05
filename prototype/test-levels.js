@@ -201,6 +201,14 @@ const SEG = {
     yield* walkTo(r, p, end(seg));
   },
 };
+// choir: the n rightmost players each stand on their own button (rightmost on the farthest); when all are held the gate opens and everyone sprints through
+SEG.choir = function* (r, p, ps, seg, S) {
+  const k = yield* arrive(r, p, ps, seg, S), n = seg.n, gx = seg.x0 + 8 + 2 * n + 2;
+  if (k < n) { const bx = (seg.x0 + 8 + 2 * (n - 1 - k)) * TILE + TILE / 2; yield* walk(r, p, bx); stop(p); }
+  yield* wait(() => r.sim.gateMap[gx], 9000);
+  yield* walk(r, p, (gx + 3) * TILE, () => p.x > (gx + 1) * TILE);
+  yield* walkTo(r, p, end(seg));
+};
 SEG.ferry = SEG.ride; SEG.lift = SEG.ride;
 
 const scriptFor = L => (r, ps) => {
@@ -217,7 +225,7 @@ function check(label, fn) { try { fn(); console.log('  ok  ', label); passed++; 
 
 console.log('Campaign levels playable by bots (no deaths):');
 LEVELS.forEach((L, i) => {
-  for (const n of [...new Set([L.min, L.min + 2, 10])]) {
+  for (const n of [...new Set([L.min, L.min + 2, 10])].filter(n => n <= 10)) {
     if (process.env.ONLY && process.env.ONLY !== `${i + 1}:${n}`) continue; // debugging: ONLY=2:2 TRACE=1
     check(`level ${i + 1} "${L.name}" (${L.grid[0].length} tiles) with ${n} players`, () => {
       const res = run(n, i, scriptFor(L), 60 * 420);
@@ -239,6 +247,25 @@ check('every level key is placed and every level has a door, a checkpoint rest a
 check('level 7 (needs a 4-high stack) is not winnable with 3 players', () => {
   const res = run(3, 6, scriptFor(LEVELS[6]), 60 * 120);
   assert(!res.won, 'three players built a four-stack');
+});
+check('level 9 (seven choir buttons) is not winnable with 6 players', () => {
+  const res = run(6, 8, scriptFor(LEVELS[8]), 60 * 150);
+  assert(!res.won, 'six players held seven buttons');
+});
+check('choir gate: opens only while every button is held, then closes again', () => {
+  const r = new Room('CH'); r.load(LEVELS[8]); const ps = []; for (let i = 0; i < 7; i++) ps.push(r.add(fake(), 'c' + i));
+  for (let i = 0; i < 20; i++) r.update(1 / 60);
+  const g = r.groups[0], put = (p, b) => { p.x = b.x + 2; p.y = b.y + b.h - PH; p.vx = p.vy = 0; };
+  ps.slice(0, 6).forEach((p, i) => put(p, g.btns[i])); for (let i = 0; i < 20; i++) r.update(1 / 60);
+  assert(!r.sim.gateMap[g.tx], 'gate opened with 6 of 7 buttons held');
+  put(ps[6], g.btns[6]); r.update(1 / 60); assert(r.sim.gateMap[g.tx], 'gate did not open with all 7 held');
+  ps.forEach(p => { p.x = 3 * TILE; p.y = 300; }); for (let i = 0; i < 60 * (r.level.choirTime + 1); i++) r.update(1 / 60);
+  assert(!r.sim.gateMap[g.tx], 'gate stayed open');
+});
+check('Party Pack levels are premium and every one needs 7+ players', () => {
+  const prem = LEVELS.filter(l => l.premium); assert.strictEqual(prem.length, 4);
+  assert(prem.every(l => l.min >= 7), 'a premium level needs fewer than 7');
+  assert(LEVELS.filter(l => !l.premium).every(l => l.min <= 4));
 });
 check('checkpoint: after touching a flag, a death respawns the player at the flag, not at the start', () => {
   const r = new Room('CP'); r.load(LEVELS[0]); const p = r.add(fake(), 'cp'); for (let i = 0; i < 20; i++) r.update(1 / 60);

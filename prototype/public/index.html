@@ -41,6 +41,9 @@
   @media (max-width:520px){#lvlGrid{grid-template-columns:repeat(2,1fr)}}
   #lvlGrid .lc{position:relative;padding:0!important;margin:0!important;border:3px solid transparent!important;border-radius:12px!important;background:#343a55!important;overflow:hidden;cursor:pointer;text-align:left;color:#fff;transition:transform .12s}
   #lvlGrid .lc:hover{transform:translateY(-2px)}
+  #lvlGrid .lh{grid-column:1/-1;font-size:12px;font-weight:700;color:#ffd23f;margin-top:4px}
+  #lvlGrid .lc.pr{background:#3d2d66!important}
+  #lvlGrid .lc em{position:absolute;bottom:26px;right:4px;font-style:normal;font-size:13px}
   #lvlGrid .lc.on{border-color:#ffd23f!important;box-shadow:0 0 0 2px #ffd23f55}
   #lvlGrid .lc svg{display:block;width:100%;height:auto}
   #lvlGrid .lc b{display:block;font-size:12px;padding:5px 7px 6px;line-height:1.15;font-weight:700}
@@ -124,7 +127,8 @@
 <script src="/sim.js"></script>
 <script src="/predict.js"></script>
 <script>
-const T = 32, PW = 24, PH = 28, TICK_MS = 1000 / 60, INTERP_MS = 100, VW = 1280, VH = 512;
+let INTERP_MS = 100; // remote players are drawn this far in the past (60 ms on a shared screen, which gets 60 Hz snapshots)
+const T = 32, PW = 24, PH = 28, TICK_MS = 1000 / 60, VW = 1280, VH = 512;
 const COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990'];
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -135,6 +139,8 @@ const pred = new Predictor();      // our own player: predicted locally, correct
 const remote = new Map();          // other players: id -> { samples: [{t,x,y}], dead }  (interpolated)
 let screenMode = false, partyPick = params.get('mode') === 'party';
 let camX = null, spawnCol = 1;      // camera (world px of the left screen edge) and the current respawn column
+let choirT = {}, choirDown = new Set(), choirAnim = {}, choirInfo = {};
+function scanChoir() { choirInfo = {}; const cols = []; for (const row of grid) for (let x = 0; x < row.length; x++) if (row[x] === 'g' && !cols.includes(x)) cols.push(x); cols.sort((a, b) => a - b); let lo = 0; for (const gx of cols) { let need = 0; for (const row of grid) for (let x = lo; x < gx; x++) if (row[x] === 'b') need++; choirInfo[gx] = { lo, need }; lo = gx + 1; } }
 let key = null, doorOpen = false, win = false, winAt = 0, gateT = 0, ping = 0, pingSeen = false;
 const inp = { l: 0, r: 0, j: 0 };
 
@@ -149,17 +155,25 @@ const THEMES = [
   ['#6fb4ff','#58b947','<g fill="#a0693a"><rect x="14" y="40" width="30" height="5" rx="2"/><rect x="54" y="28" width="30" height="5" rx="2"/><rect x="96" y="16" width="30" height="5" rx="2"/></g><path d="M70 40v-5M68 36l2-3 2 3M110 28v-5M108 24l2-3 2 3" stroke="#fff" stroke-width="2" fill="none"/><g fill="#fff" opacity=".85"><ellipse cx="30" cy="12" rx="14" ry="5"/><ellipse cx="110" cy="8" rx="12" ry="4"/></g>'],
   ['#e9a36b','#7a5a3a','<g fill="#d5dae3" stroke="#556" stroke-width="1.5"><circle cx="40" cy="34" r="8"/><circle cx="104" cy="26" r="8"/></g><path d="M64 46l4-9 4 9zM72 46l4-9 4 9z" fill="#b8c0cc"/><rect x="82" y="34" width="26" height="6" rx="2" fill="#a0693a"/><rect x="118" y="38" width="3" height="8" fill="#555"/>'],
   ['#5a5fa8','#4a3f6a','<g><rect x="58" y="14" width="12" height="12" fill="#e6194b"/><rect x="58" y="26" width="12" height="12" fill="#3cb44b"/><rect x="58" y="38" width="12" height="12" fill="#4363d8"/><rect x="82" y="26" width="12" height="12" fill="#f58231"/><rect x="82" y="38" width="12" height="12" fill="#911eb4"/></g><circle cx="120" cy="14" r="6" fill="#ffd23f"/>'],
-  ['#1f2447','#3b3560','<g fill="#fff"><circle cx="14" cy="10" r="1.5"/><circle cx="50" cy="16" r="1.2"/><circle cx="90" cy="8" r="1.5"/><circle cx="130" cy="14" r="1.2"/></g><circle cx="120" cy="16" r="8" fill="#ffe9a8"/><g fill="#d5dae3" stroke="#889" stroke-width="1.5"><circle cx="34" cy="38" r="7"/><circle cx="76" cy="36" r="7"/></g><rect x="100" y="32" width="3" height="14" fill="#aaa"/><path d="M103 32l11 4-11 4z" fill="#ff5d5d"/>']
+  ['#1f2447','#3b3560','<g fill="#fff"><circle cx="14" cy="10" r="1.5"/><circle cx="50" cy="16" r="1.2"/><circle cx="90" cy="8" r="1.5"/><circle cx="130" cy="14" r="1.2"/></g><circle cx="120" cy="16" r="8" fill="#ffe9a8"/><g fill="#d5dae3" stroke="#889" stroke-width="1.5"><circle cx="34" cy="38" r="7"/><circle cx="76" cy="36" r="7"/></g><rect x="100" y="32" width="3" height="14" fill="#aaa"/><path d="M103 32l11 4-11 4z" fill="#ff5d5d"/>'],
+  ['#3b2a6e','#2b1f4d','<g fill="#a56bff" stroke="#e6d3ff" stroke-width="1"><rect x="14" y="36" width="12" height="4" rx="1"/><rect x="34" y="36" width="12" height="4" rx="1"/><rect x="54" y="36" width="12" height="4" rx="1"/><rect x="74" y="36" width="12" height="4" rx="1"/></g><rect x="104" y="10" width="7" height="30" fill="#6b5b8a"/><g fill="#fff" opacity=".8"><circle cx="20" cy="12" r="1.3"/><circle cx="60" cy="8" r="1.3"/></g>'],
+  ['#233a6e','#1c2d52','<g fill="#a56bff"><rect x="12" y="36" width="10" height="4"/><rect x="28" y="36" width="10" height="4"/><rect x="44" y="36" width="10" height="4"/><rect x="60" y="36" width="10" height="4"/><rect x="76" y="36" width="10" height="4"/></g><g fill="#d5dae3" stroke="#889" stroke-width="1.5"><circle cx="112" cy="30" r="8"/></g><rect x="96" y="6" width="6" height="34" fill="#6b5b8a"/>'],
+  ['#4a2a5a','#33203f','<g fill="#a56bff"><rect x="10" y="36" width="9" height="4"/><rect x="24" y="36" width="9" height="4"/><rect x="38" y="36" width="9" height="4"/><rect x="52" y="36" width="9" height="4"/><rect x="66" y="36" width="9" height="4"/><rect x="80" y="36" width="9" height="4"/></g><rect x="104" y="6" width="6" height="34" fill="#6b5b8a"/><path d="M118 40l4-9 4 9z" fill="#b8c0cc"/>'],
+  ['#2a1840','#241238','<g fill="#ffd23f"><circle cx="75" cy="22" r="13" opacity=".25"/><path d="M75 8l4 9 10 1-7 7 2 10-9-5-9 5 2-10-7-7 10-1z"/></g><g fill="#a56bff"><rect x="10" y="36" width="8" height="4"/><rect x="22" y="36" width="8" height="4"/><rect x="34" y="36" width="8" height="4"/><rect x="108" y="36" width="8" height="4"/><rect x="120" y="36" width="8" height="4"/></g>']
 ];
 function levelThumb(i) { const t = THEMES[i % THEMES.length]; return `<svg viewBox="0 0 150 60" preserveAspectRatio="xMidYMid slice"><rect width="150" height="60" fill="${t[0]}"/>${t[2]}<rect y="46" width="150" height="14" fill="${t[1]}" opacity="${i === 2 ? 0 : 1}"/></svg>`; }
 function renderLevelGrid() {
   const cur = +$('startLevel').value || 0;
-  $('lvlGrid').innerHTML = levelList.map((l, i) => `<button type="button" class="lc${i === cur ? ' on' : ''}" data-i="${i}" title="${l.name}">${levelThumb(i)}<i>${i + 1}</i>${l.min > 1 ? `<u>${l.min}+</u>` : ''}<b>${l.name.replace(/^\d+\.\s*/, '')}</b></button>`).join('');
-  for (const b of $('lvlGrid').children) b.onclick = () => { $('startLevel').value = b.dataset.i; for (const c of $('lvlGrid').children) c.classList.toggle('on', c === b); };
+  const cards = levelList.map((l, i) => (l.premium && !levelList[i - 1].premium ? '<div class="lh">&#11088; Party Pack levels: 7-10 players, host unlock</div>' : '') + `<button type="button" class="lc${l.premium ? ' pr' : ''}${i === cur ? ' on' : ''}" data-i="${i}" title="${l.name}">${levelThumb(i)}<i>${i + 1}</i>${l.min > 1 ? `<u>${l.min}+</u>` : ''}${l.premium ? '<em>&#11088;</em>' : ''}<b>${l.name.replace(/^\d+\.\s*/, '')}</b></button>`);
+  $('lvlGrid').innerHTML = cards.join('');
+  for (const b of $('lvlGrid').querySelectorAll('.lc')) b.onclick = () => {
+    if (levelList[+b.dataset.i].premium && !$('key').value.trim()) { $('keybox').open = true; $('err').textContent = 'Party Pack levels need a Party Pack key (enter it below, or tap Get a Party Pack key).'; $('key').focus(); return; }
+    $('err').textContent = ''; $('startLevel').value = b.dataset.i; for (const c of $('lvlGrid').querySelectorAll('.lc')) c.classList.toggle('on', c === b);
+  };
 }
 fetch('/levels.json').then(r => r.json()).then(list => {
   levelList = list;
-  const opts = list.map((l, i) => `<option value="${i}">${l.name}${l.min > 1 ? `  (${l.min}+ players)` : ''}</option>`).join('');
+  const opts = list.map((l, i) => `<option value="${i}">${l.premium ? '\u2B50 ' : ''}${l.name}${l.min > 1 ? `  (${l.min}+ players)` : ''}</option>`).join('');
   $('startLevel').innerHTML = opts; $('lvlSel').innerHTML = opts;
   $('startLevel').value = localStorage.getItem('startLevel') || '0';
   if (!$('startLevel').value) $('startLevel').value = '0';
@@ -215,9 +229,9 @@ $('go').onclick = () => {
     if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
     else if (m.t === 'unlocked') { alert('Unlocked! This room now holds up to 10 players.'); }
     else if (m.t === 'uerr') { alert(m.m); }
-    else if (m.t === 'welcome') { screenMode = !!m.screen; me = screenMode ? null : m.id; code = m.code; history.replaceState(null, '', '?room=' + code + (screenMode ? '&mode=party' : '')); $('join').style.display = 'none'; $('game').style.display = 'block'; document.body.classList.add('playing'); if (screenMode) { document.body.classList.add('screenmode'); showJoinBox(); } else setupTouch(); resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
+    else if (m.t === 'welcome') { screenMode = !!m.screen; if (screenMode) INTERP_MS = 60; me = screenMode ? null : m.id; code = m.code; history.replaceState(null, '', '?room=' + code + (screenMode ? '&mode=party' : '')); $('join').style.display = 'none'; $('game').style.display = 'block'; document.body.classList.add('playing'); if (screenMode) { document.body.classList.add('screenmode'); showJoinBox(); } else setupTouch(); resize(); last = performance.now(); requestAnimationFrame(frame); setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'ping', c: performance.now() })); }, 2000); }
     else if (m.t === 'pong') { const rtt = performance.now() - m.c; ping = pingSeen ? ping * 0.7 + rtt * 0.3 : rtt; pingSeen = true; }
-    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; camX = null; spawnCol = 1; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
+    else if (m.t === 'lvl') { choirT = {}; choirDown = new Set(); choirAnim = {}; grid = m.grid; scanChoir(); lvlName = m.name; lvlMin = m.min || 1; lvlHint = m.hint || ''; lvlNo = m.n || 0; lvlOf = m.of || 0; $('lvlSel').value = String((m.n || 1) - 1); lvlAt = performance.now(); remote.clear(); anim.clear(); parts.length = 0; pred.setGrid(grid, m.mv); gateT = 0; camX = null; spawnCol = 1; buildLevel(); key = null; kd = null; doorOpen = false; win = false; doorAnim = 0; gateAnim = 0; }
     else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; unlocked = !!m.unlocked; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
     else if (m.t === 's') {
       const now = performance.now();
@@ -236,6 +250,7 @@ $('go').onclick = () => {
       doorOpen = !!m.d;
       if (m.w && !win) { win = true; winAt = now; sfx.win(); confetti((camX || 0) + VW / 2, 120, 90); } else if (!m.w) win = false;
       if (m.c != null) spawnCol = m.c;
+      if (m.cg) { const mp = {}; choirT = {}; for (const [tx, t] of m.cg) { if (t > 0 && !(choirT[tx] > 0) && !choirAnim[tx]) sfx.gate(); choirT[tx] = t; mp[tx] = t > 0; } pred.setChoir(mp); choirDown = new Set(m.cb || []); }
       const g = m.g || 0; if (g > 0 && gateT <= 0) sfx.gate(); gateT = g; pred.setGate(g > 0);
     }
   };
@@ -381,10 +396,10 @@ function drawSpike(x, y) {
   }
   ctx.fillStyle = '#3d4350'; ctx.fillRect(x, y + T - 4, T, 4);
 }
-function drawButton(x, y, pressed) {
+function drawButton(x, y, pressed, choir) {
   const h = pressed ? 4 : 9;
   ctx.fillStyle = '#3d4350'; ctx.beginPath(); ctx.roundRect(x + 1, y + T - 7, T - 2, 7, 3); ctx.fill();
-  ctx.fillStyle = pressed ? '#58d68d' : '#e74c3c'; ctx.beginPath(); ctx.roundRect(x + 5, y + T - 7 - h, T - 10, h + 2, 4); ctx.fill();
+  ctx.fillStyle = pressed ? '#58d68d' : (choir ? '#a56bff' : '#e74c3c'); ctx.beginPath(); ctx.roundRect(x + 5, y + T - 7 - h, T - 10, h + 2, 4); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.fillRect(x + 8, y + T - 6 - h, T - 18, 2);
 }
 function drawGate(tx, ty0, ty1, open, t) { // gate column from ty0..ty1 (tiles), open = 0..1 (1 = fully raised)
@@ -620,12 +635,14 @@ function draw(now) {
   if (door) { let inside = 0; for (const p of list) if (p.x < door.x + door.w && p.x + PW > door.x && p.y < door.y + door.h && p.y + PH > door.y) inside++; drawDoor(door, doorAnim, t, inside, roster.size); }
   if (tileCanvas) ctx.drawImage(tileCanvas, cam, 0, VW, VH, cam, 0, VW, VH);
   // dynamic tiles: spikes, buttons, gates
-  const gates = new Map();
+  const gates = new Map(), cgates = new Map();
   const tx0 = Math.max(0, Math.floor(cam / T) - 1), tx1 = Math.min((grid[0] ? grid[0].length : 0) - 1, tx0 + VW / T + 3);
   for (let ty = 0; ty < grid.length; ty++) for (let tx = tx0; tx <= tx1; tx++) {
     const c = grid[ty][tx], x = tx * T, y = ty * T;
     if (c === '^') drawSpike(x, y);
     else if (c === 'B') drawButton(x, y, gateT > 0);
+    else if (c === 'b') drawButton(x, y, choirDown.has(tx), true);
+    else if (c === 'g') { const gc = cgates.get(tx); if (!gc) cgates.set(tx, { tx, y0: ty, y1: ty }); else gc.y1 = ty; }
     else if (c === 'C') drawFlag(x, y, spawnCol >= tx - 10, t);
     else if (c === 'G') { const gc = gates.get(tx); if (!gc) gates.set(tx, { tx, y0: ty, y1: ty }); else gc.y1 = ty; }
   }
@@ -637,6 +654,13 @@ function draw(now) {
       ctx.fillStyle = 'rgba(20,22,35,.7)'; ctx.beginPath(); ctx.roundRect(x - 24, 8, 48, 12, 6); ctx.fill();
       ctx.fillStyle = gateT < 1.2 ? '#ff6b6b' : '#7be37b'; ctx.beginPath(); ctx.roundRect(x - 22, 10, Math.max(4, w), 8, 4); ctx.fill();
     }
+  }
+  for (const cg of cgates.values()) { // choir gates: purple label shows how many buttons are held
+    const open = choirT[cg.tx] > 0; choirAnim[cg.tx] = (choirAnim[cg.tx] || 0) + ((open ? 1 : 0) - (choirAnim[cg.tx] || 0)) * Math.min(1, dt * 7);
+    drawGate(cg.tx, cg.y0, cg.y1, choirAnim[cg.tx], t);
+    const info = choirInfo[cg.tx] || { lo: 0, need: 0 }; let have = 0; for (const bx of choirDown) if (bx >= info.lo && bx < cg.tx) have++;
+    const gx = cg.tx * T + T / 2; ctx.fillStyle = 'rgba(40,20,80,.85)'; ctx.beginPath(); ctx.roundRect(gx - 28, 8, 56, 22, 8); ctx.fill();
+    ctx.fillStyle = open ? '#7be37b' : '#e6d3ff'; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center'; ctx.fillText(open ? 'GO!' : `${have}/${info.need}`, gx, 25); ctx.textAlign = 'left';
   }
   for (const m of pred.sim.platforms) drawPlatform(m.x, m.y, m.w, m.h);
   for (const m of pred.sim.hazards) drawSaw(m, t);
