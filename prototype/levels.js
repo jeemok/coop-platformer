@@ -11,7 +11,7 @@ const THICK = 14;
 function make(w) { return Array.from({ length: H }, () => Array(w).fill('.')); }
 function rect(g, x, y, w, h, c) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) g[y + j][x + i] = c; }
 const plat = (col, y, w, ax, ay, o = {}) => ({ kind: 'plat', x: col * TILE, y, w: w * TILE, h: THICK, ax: ax * TILE, ay, move: o.move || 3, dwellA: o.dwellA ?? 2, dwellB: o.dwellB ?? 2, phase: o.phase || 0 });
-const saw = (col, y0, y1, o = {}) => ({ kind: 'saw', x: col * TILE + 5, y: y0, w: 22, h: 22, ax: 0, ay: y1 - y0, move: o.move || 1.1, dwellA: o.dwellA ?? 1.8, dwellB: o.dwellB ?? 1, phase: o.phase || 0 });
+const saw = (col, y0, y1, o = {}) => ({ kind: 'saw', x: col * TILE + 5, y: y0, w: 22, h: 22, ax: 0, ay: y1 - y0, move: o.move || 0.8, dwellA: o.dwellA ?? 1.5, dwellB: o.dwellB ?? 1, phase: o.phase || 0 });
 
 // ---- segment constructors: each returns { type, w, ...params, build(g, x0, movers) -> key|undefined } ----
 // terrain: ordinary platforming. feats: ['spike',c,n] ['pit',c,n] ['wall',c,width,height]; opts.key = column of a key lying on the ground
@@ -35,7 +35,7 @@ const saws = (n, o = {}) => ({ type: 'saws', w: 10 * n + 4, n, build(g, x0, mv) 
 // ferry: a platform shuttles across a pit that is too wide to jump. plat = width in tiles (5 fits 5 players, 9 fits 10)
 const ferry = (pit, platW, o = {}) => ({ type: 'ferry', w: 9 + pit + 4, pit, platW, build(g, x0, mv) {
   rect(g, x0 + 9, 13, pit, 3, '.');
-  mv.push(plat(x0 + 9, 416, platW, pit - platW, 0, { move: o.move || 3.2, dwellA: o.rest || 3.5, dwellB: o.rest || 3.5, phase: o.phase || 0 }));
+  mv.push(plat(x0 + 9, 416, platW, pit - platW, 0, { move: o.move || 2.4, dwellA: o.rest || 2.0, dwellB: o.rest || 2.0, phase: o.phase || 0 }));
 } });
 // lift: a wide platform rises from a shaft to a ledge (row 8) with hazards on it; walk off the end and drop to the ground
 const lift = (L, ledgeFeats, o = {}) => ({ type: 'lift', w: 18 + L + 7, L, build(g, x0, mv) {
@@ -71,7 +71,7 @@ function level(name, min, hint, segs, opts = {}) {
 // Hazard spacing (checked by the bots): 2+ free tiles between a pit and the next hazard, nothing within ~4 tiles after a drop-off.
 const garden = (n, c0 = 4) => Array.from({ length: n }, (_, i) => ['spike', c0 + i * 4, 2]);       // spike patches with 2-tile safe islands
 const stones = (n, c0 = 4) => Array.from({ length: n }, (_, i) => ['pit', c0 + i * 5, 3]);          // 3-wide pits with 2-tile stepping stones
-const HARD_SAWS = { move: 0.9, dwellA: 1.7, dwellB: 1.6 };
+const HARD_SAWS = { move: 0.5, dwellA: 1.25, dwellB: 0.9 };  // fast blades: only ~1.75 s of safe time per cycle
 
 const LEVELS = [
   level('1. The long road', 1, 'A long way to the door, with checkpoints. Touch a flag and everyone respawns there.', [
@@ -99,7 +99,7 @@ const LEVELS = [
     ferry(13, 5, { phase: 4 }),
     rest(),
     terrain(26, [['spike', 5, 2], ['spike', 9, 2], ['wall', 15, 2, 2], ['spike', 20, 2]]),
-    ferry(12, 5, { move: 2.6, rest: 3 }),
+    ferry(12, 5, { move: 2.0, rest: 1.9 }),
     terrain(20, [['spike', 6, 2]]),
   ]),
   level('4. Gatekeepers II', 2, 'One of you holds the button. The rest run for the gates. Gates close again!', [
@@ -164,7 +164,7 @@ const LEVELS = [
     saws(2, HARD_SAWS),
     rest(),
     terrain(26, [...garden(4), ['wall', 22, 2, 2]]),
-    ferry(13, 5, { phase: 3, move: 2.6 }),
+    ferry(13, 5, { phase: 3, move: 2.0, rest: 1.9 }),
     terrain(24, [...stones(2, 4), ['spike', 20, 2]]),
   ], { gateTime: 3.6 }),
 ];

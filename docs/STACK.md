@@ -74,7 +74,7 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
   3. Hazards after the key platform must start at least ~4 tiles past its right edge (a player dropping off lands
      about 3 tiles further on), and never right in front of the door: 10 players land in a pile.
   4. A platform that has to carry the whole room must be wide enough for 10 players (9 tiles = 10 players at 27 px each) and must rest
-     at each end long enough to board (3.5 s on the ferry). Keep platform paths free of walls and floors so nobody is crushed.
+     at each end long enough to board (only ~2 s on the ferries now). Keep platform paths free of walls and floors so nobody is crushed.
   5. A saw lane must stay passable for a whole pack (the bots wait for 2.4 s of clear time), and nothing a player must cross
      may be unjumpable except the ferry pit (13 tiles).
   6. The first hazard of a terrain segment is 8+ tiles in (`LEAD`): a pack of 10 arriving behind you shoves you ~7 tiles forward.

@@ -126,7 +126,7 @@ const SEG = {
     const queue = (lane, k) => lane.d.x - 36 - k * (PW + 3);
     for (let i = 0; i < lanes.length; i++) {
       yield* shuffleTo(p, () => queue(lanes[i], k));
-      yield* wait(() => clear(lanes[i], 2.4), 6000);
+      yield* wait(() => clear(lanes[i], 1.65), 6000);
       yield* shuffleTo(p, () => lanes[i + 1] ? queue(lanes[i + 1], k) : lanes[i].d.x + 3 * TILE);
     }
     yield* walkTo(r, p, end(seg));
@@ -138,7 +138,7 @@ const SEG = {
     yield* shuffleTo(p, () => d.x - PW - 6 - k * (PW + 3));
     for (let n = 0; ; n++) {
       if (n > 9000) throw new Error('ride: never boarded');
-      if (restA(d, r) > 2.0) { if (S.first == null) S.first = cycleNo(d, r); if (cycleNo(d, r) >= S.first + wave) break; }
+      if (restA(d, r) > 1.75) { if (S.first == null) S.first = cycleNo(d, r); if (cycleNo(d, r) >= S.first + wave) break; }
       yield;
     }
     yield* shuffleTo(p, () => pl.x + d.w - PW - 6 - j * (PW + 3));
