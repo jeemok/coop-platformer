@@ -1,0 +1,19 @@
+# Render Blueprint: Dashboard > New > Blueprint > pick this repo.
+# Free plan, Singapore (closest to Southeast Asian players). No paid resources are declared.
+services:
+  - type: web
+    name: coop-platformer
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: prototype
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MAX_ROOMS      # keep the free instance's tiny CPU from being overloaded
+        value: "10"
+      - key: MAX_PLAYERS
+        value: "10"

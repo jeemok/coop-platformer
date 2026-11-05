@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Co-op Platformer (prototype)</title>
+<style>
+  html,body{margin:0;background:#1b1d2a;color:#eee;font-family:system-ui,sans-serif;height:100%}
+  #join{max-width:360px;margin:12vh auto;padding:24px;background:#262a3d;border-radius:12px}
+  #join input,#join button{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;border-radius:8px;border:0;font-size:16px}
+  #join button{background:#4363d8;color:#fff;cursor:pointer}
+  #err{color:#ff7b7b;min-height:1.2em}
+  #game{display:none}
+  canvas{display:block;width:100vw;max-height:calc(100vh - 40px);aspect-ratio:1280/512;background:#8fd3ff;margin:0 auto}
+  #bar{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;font-size:14px}
+  #bar button{padding:4px 10px;border-radius:6px;border:0;cursor:pointer}
+</style></head><body>
+<div id="join">
+  <h2>Co-op Platformer <small>(prototype)</small></h2>
+  <input id="nick" placeholder="Your nickname" maxlength="12">
+  <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
+  <button id="go">Play</button>
+  <div id="err"></div>
+  <p style="font-size:13px;opacity:.7">Move: arrows / A D. Jump: space / W / up. Stand on friends, push them, get the key to the door, then everyone enter the door.</p>
+</div>
+<div id="game">
+  <div id="bar"><span id="info"></span><button id="copy">Copy invite link</button><button id="restart">Restart level (host)</button></div>
+  <canvas id="c" width="1280" height="512"></canvas>
+</div>
+<script src="/sim.js"></script>
+<script src="/predict.js"></script>
+<script>
+const T = 32, PW = 24, PH = 28, TICK_MS = 1000 / 60, INTERP_MS = 100;
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+$('room').value = (params.get('room') || '').toUpperCase();
+$('nick').value = localStorage.getItem('nick') || '';
+let ws, me, code, grid = [], lvlName = '', lvlMin = 1, roster = new Map(), host = null;
+const pred = new Predictor();      // our own player: predicted locally, corrected by the server
+const remote = new Map();          // other players: id -> { samples: [{t,x,y}], dead }  (interpolated)
+let key = null, doorOpen = false, win = false, ping = 0;
+const inp = { l: 0, r: 0, j: 0 };
+
+$('go').onclick = () => {
+  const nick = $('nick').value.trim() || 'Player';
+  localStorage.setItem('nick', nick);
+  code = $('room').value.trim().toUpperCase() || Math.random().toString(36).slice(2, 6).toUpperCase();
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', room: code, nick }));
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'err') { $('err').textContent = m.m; ws.close(); }
+    else if (m.t === 'welcome') { me = m.id; code = m.code; history.replaceState(null, '', '?room=' + code); $('join').style.display = 'none'; $('game').style.display = 'block'; last = performance.now(); requestAnimationFrame(frame); }
+    else if (m.t === 'lvl') { grid = m.grid; lvlName = m.name; lvlMin = m.min || 1; remote.clear(); pred.setGrid(grid); }
+    else if (m.t === 'roster') { roster = new Map(m.p.map(p => [p.id, p])); host = m.host; for (const id of [...remote.keys()]) if (!roster.has(id)) remote.delete(id); }
+    else if (m.t === 's') {
+      const now = performance.now();
+      for (const [id, x, y, dead, vy, og, ack] of m.p) {
+        if (id === me) pred.reconcile({ x, y, dead, vy, og, ack });
+        else {
+          let r = remote.get(id); if (!r) remote.set(id, r = { samples: [], dead: 0 });
+          r.samples.push({ t: now, x, y }); if (r.samples.length > 12) r.samples.shift(); r.dead = dead;
+        }
+      }
+      key = m.k; doorOpen = !!m.d; win = !!m.w;
+    }
+  };
+  ws.onclose = () => { if ($('game').style.display === 'block') $('info').textContent = 'Disconnected. Refresh to rejoin.'; };
+};
+$('copy').onclick = () => { navigator.clipboard.writeText(location.origin + '/?room=' + code); $('copy').textContent = 'Copied!'; setTimeout(() => $('copy').textContent = 'Copy invite link', 1500); };
+$('restart').onclick = () => ws.send(JSON.stringify({ t: 'restart' }));
+
+const map = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j' };
+addEventListener('keydown', e => { const k = map[e.code]; if (!k || e.target.tagName === 'INPUT') return; e.preventDefault(); inp[k] = 1; });
+addEventListener('keyup', e => { const k = map[e.code]; if (k) inp[k] = 0; });
+addEventListener('blur', () => { inp.l = inp.r = inp.j = 0; });
+
+// where another player should be drawn: ~100 ms in the past, between two server snapshots
+function interp(r, rt) {
+  const s = r.samples; if (!s.length) return null;
+  if (rt <= s[0].t) return s[0];
+  for (let i = 0; i < s.length - 1; i++) if (rt <= s[i + 1].t) { const k = (rt - s[i].t) / (s[i + 1].t - s[i].t); return { x: s[i].x + (s[i + 1].x - s[i].x) * k, y: s[i].y + (s[i + 1].y - s[i].y) * k }; }
+  return s[s.length - 1];
+}
+function ghostList(rt) { const out = []; for (const [id, r] of remote) { const p = interp(r, rt); if (p) out.push({ id, x: p.x, y: p.y, dead: r.dead }); } return out; }
+
+// fixed 60 Hz simulation tick: predict our own movement immediately and send the numbered input
+function tick() {
+  pred.setGhosts(ghostList(performance.now() - INTERP_MS));
+  const i = pred.step(inp);
+  if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'in', s: i.s, l: i.l, r: i.r, j: i.j }));
+}
+
+const ctx = $('c').getContext('2d');
+let last = 0, acc = 0;
+function frame(now) {
+  acc += Math.min(now - last, 100); last = now;
+  while (acc >= TICK_MS) { acc -= TICK_MS; tick(); }
+  draw(now);
+  requestAnimationFrame(frame);
+}
+function drawPlayer(id, x, y) {
+  const r = roster.get(id); if (!r) return;
+  ctx.fillStyle = r.color; ctx.beginPath(); ctx.roundRect(x, y, PW, PH, 6); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.fillRect(x + 5, y + 7, 5, 6); ctx.fillRect(x + 14, y + 7, 5, 6);
+  ctx.fillStyle = '#000'; ctx.fillRect(x + 7, y + 9, 2, 3); ctx.fillRect(x + 16, y + 9, 2, 3);
+  ctx.fillStyle = id === me ? '#fff' : '#222'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(r.nick + (id === me ? ' (you)' : ''), x + PW / 2, y - 6);
+}
+function draw(now) {
+  ctx.clearRect(0, 0, 1280, 512);
+  grid.forEach((row, ty) => [...row].forEach((c, tx) => {
+    const x = tx * T, y = ty * T;
+    if (c === '#') { ctx.fillStyle = '#3a3f5c'; ctx.fillRect(x, y, T, T); ctx.fillStyle = '#5b6290'; ctx.fillRect(x, y, T, 4); }
+    else if (c === '^') { ctx.fillStyle = '#d33'; ctx.beginPath(); ctx.moveTo(x + 4, y + T); ctx.lineTo(x + T / 2, y + 12); ctx.lineTo(x + T - 4, y + T); ctx.fill(); }
+    else if (c === 'D') { ctx.fillStyle = doorOpen ? '#ffd34d' : '#8a5a2b'; ctx.fillRect(x, y, T, T); }
+  }));
+  if (key) { ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(key[0] + 10, key[1] + 10, 9, 0, 7); ctx.fill(); ctx.strokeStyle = '#a80'; ctx.stroke(); }
+  const rt = now - INTERP_MS;
+  for (const [id, r] of remote) { if (r.dead) continue; const p = interp(r, rt); if (p) drawPlayer(id, p.x, p.y); }
+  if (pred.ready && !pred.me.dead) { const p = pred.renderPos(); drawPlayer(me, p.x, p.y); }
+  if (win) { ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 200, 1280, 100); ctx.fillStyle = '#fff'; ctx.font = '48px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Level complete!', 640, 262); }
+  $('info').textContent = `${lvlName}${lvlMin > 1 ? ' (needs ' + lvlMin + '+ players)' : ''} | room ${code} | ${roster.size} player${roster.size === 1 ? '' : 's'}${doorOpen ? ' | door open: everyone in!' : ''}`;
+  $('restart').style.display = host === me ? '' : 'none';
+}
+</script></body></html>
