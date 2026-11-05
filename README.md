@@ -8,6 +8,8 @@
 
 It is inspired by the mechanics of games like Pico Park, but it is an original game: its own code, levels and art. Nothing was decompiled, extracted or copied from Pico Park or any TECOPARK asset.
 
+> **Lowest latency:** the hosted game routes phone presses through the cloud. For the best feel, clone the repo and run **[local mode](#local-mode-lowest-lag-phones-talk-to-your-laptop-over-wifi)** (`npm run local`): the laptop hosts the game and phones connect straight to it over your wifi, so the controls respond in a few milliseconds instead of ~100.
+
 > **For AI assistants and agents:** see [`llms.txt`](llms.txt) for a machine-readable summary of what this is, how to play it and how to join a room.
 
 ## Two ways to play
@@ -19,6 +21,8 @@ Everyone opens the site on a laptop or phone, types a nickname and joins the sam
 
 ### One screen: one laptop, everyone's phone is a controller
 For friends in the same room. One laptop shows the game and a QR code; everyone else scans it and gets a phone controller (hold the phone sideways: left, right, jump).
+
+*Playing in the same room? Use [local mode](#local-mode-lowest-lag-phones-talk-to-your-laptop-over-wifi) for the most responsive controls.*
 
 | Laptop / TV | Phone controller |
 |---|---|
@@ -59,10 +63,17 @@ It starts the server, prints the address phones should use, and opens the shared
 
 ## Run it yourself
 
+Two ways, both from the `prototype/` folder after `npm install`:
+
+| Command | Use it for |
+|---|---|
+| `npm start` | Development or hosting. Plain server on http://localhost:3000 (`PORT=3017 npm start` to change the port) |
+| `npm run local` | **Playing together in one room.** Prints your wifi address, opens the shared screen with a QR code, and phones connect over wifi with minimal latency. See [Local mode](#local-mode-lowest-lag-phones-talk-to-your-laptop-over-wifi) |
+
 ```bash
 cd prototype
 npm install
-npm start            # http://localhost:3000   (PORT=3017 npm start to change the port)
+npm start
 ```
 
 Open it in two or more browser tabs, join the same room, or choose "One screen" and open `/pad` on a phone on the same network. Dev options: `START_LEVEL=6 npm start`, `SPAWN_COL=150` (start everyone partway along), `?auto=1` in the URL joins immediately.
