@@ -36,6 +36,16 @@
   #join #go:active{transform:translateY(3px);box-shadow:0 1px 0 #b37d00}
   #feat{position:relative;z-index:1;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:18px;max-width:560px}
   #feat span{background:rgba(255,255,255,.75);color:#12326a;border-radius:999px;padding:6px 13px;font-size:13px;font-weight:600}
+  #join{max-width:560px!important}
+  #lvlGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:6px 0 8px}
+  @media (max-width:520px){#lvlGrid{grid-template-columns:repeat(2,1fr)}}
+  #lvlGrid .lc{position:relative;padding:0!important;margin:0!important;border:3px solid transparent!important;border-radius:12px!important;background:#343a55!important;overflow:hidden;cursor:pointer;text-align:left;color:#fff;transition:transform .12s}
+  #lvlGrid .lc:hover{transform:translateY(-2px)}
+  #lvlGrid .lc.on{border-color:#ffd23f!important;box-shadow:0 0 0 2px #ffd23f55}
+  #lvlGrid .lc svg{display:block;width:100%;height:auto}
+  #lvlGrid .lc b{display:block;font-size:12px;padding:5px 7px 6px;line-height:1.15;font-weight:700}
+  #lvlGrid .lc i{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.55);border-radius:999px;font:800 11px/1 system-ui;padding:4px 7px;font-style:normal}
+  #lvlGrid .lc u{position:absolute;top:4px;right:4px;background:#ffb703;color:#2b1d00;border-radius:999px;font:800 10px/1 system-ui;padding:4px 6px;text-decoration:none}
   #game{display:none}
   canvas{display:block;width:100vw;max-height:calc(100vh - 40px);aspect-ratio:1280/512;background:#8fd3ff;margin:0 auto}
   #bar{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;font-size:14px}
@@ -74,8 +84,9 @@
   <div id="modes"><button id="mOnline" class="on"><svg viewBox="0 0 120 70" class="mi"><rect x="6" y="8" width="62" height="40" rx="5" fill="#8fd3ff" stroke="#fff" stroke-width="3"/><rect x="0" y="50" width="74" height="6" rx="3" fill="#fff"/><rect x="14" y="30" width="9" height="12" rx="3" fill="#e6194b"/><rect x="28" y="24" width="9" height="18" rx="3" fill="#3cb44b"/><rect x="82" y="16" width="26" height="46" rx="6" fill="#8fd3ff" stroke="#fff" stroke-width="3"/><rect x="90" y="40" width="9" height="12" rx="3" fill="#4363d8"/><path d="M70 30q6-8 12-4" stroke="#ffd23f" stroke-width="3" fill="none" stroke-dasharray="3 4"/></svg>Online<small>everyone joins from their own laptop or phone</small></button><button id="mParty"><svg viewBox="0 0 120 70" class="mi"><rect x="22" y="2" width="76" height="46" rx="5" fill="#8fd3ff" stroke="#fff" stroke-width="3"/><rect x="52" y="48" width="16" height="7" fill="#fff"/><rect x="40" y="55" width="40" height="5" rx="2" fill="#fff"/><rect x="34" y="30" width="9" height="12" rx="3" fill="#e6194b"/><rect x="48" y="24" width="9" height="18" rx="3" fill="#3cb44b"/><rect x="62" y="30" width="9" height="12" rx="3" fill="#f58231"/><rect x="2" y="42" width="18" height="26" rx="4" fill="#262a3d" stroke="#ffd23f" stroke-width="2.5"/><rect x="50" y="62" width="18" height="0"/><rect x="100" y="42" width="18" height="26" rx="4" fill="#262a3d" stroke="#ffd23f" stroke-width="2.5"/><circle cx="11" cy="58" r="3" fill="#ffd23f"/><circle cx="109" cy="58" r="3" fill="#ffd23f"/></svg>One screen<small>this screen shows the game, everyone uses their phone as a controller</small></button></div>
   <input id="nick" placeholder="Your nickname" maxlength="12">
   <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
-  <label style="font-size:13px;opacity:.8">Start at level (only used when you create a new room)</label>
-  <select id="startLevel"></select>
+  <label style="font-size:13px;opacity:.8">Pick a level (used when you create a new room)</label>
+  <div id="lvlGrid"></div>
+  <select id="startLevel" style="display:none"></select>
   <details id="keybox" style="margin:6px 0;font-size:13px"><summary style="cursor:pointer;opacity:.85">Party Pack: 6-10 players per room</summary>
     <div style="opacity:.75;margin:6px 0">Free rooms hold 5 players. The host can unlock 10 with a Party Pack key (one-time purchase).</div>
     <input id="key" placeholder="Party Pack key (optional)" autocomplete="off" maxlength="100">
@@ -129,6 +140,23 @@ const inp = { l: 0, r: 0, j: 0 };
 
 // level list (names come from the server so there is one source of truth)
 let levelList = [];
+
+const THEMES = [
+  ['#7fd0ff','#58b947','<path d="M8 40q20-20 40-4t40-6 40 4V56H8z" fill="#9bd8b4"/><rect x="100" y="28" width="3" height="16" fill="#555"/><path d="M103 28l12 4-12 4z" fill="#ff5d5d"/><path d="M40 44l4-9 4 9zM48 44l4-9 4 9z" fill="#b8c0cc"/>'],
+  ['#8fd9ff','#58b947','<g fill="#d5dae3" stroke="#556" stroke-width="1.5"><circle cx="38" cy="36" r="9"/><circle cx="78" cy="30" r="9"/><circle cx="116" cy="36" r="9"/></g><g stroke="#556" stroke-width="2"><path d="M38 20v7M78 14v7M116 20v7"/></g>'],
+  ['#8fd3ff','#2a79c9','<rect y="40" width="150" height="20" fill="#3a8fe0"/><path d="M0 42q8-5 16 0t16 0 16 0 16 0 16 0 16 0 16 0 16 0 16 0" stroke="#bfe6ff" fill="none" stroke-width="1.5"/><rect x="52" y="34" width="46" height="7" rx="2" fill="#a0693a"/><rect x="66" y="22" width="9" height="12" rx="3" fill="#e6194b"/><rect x="78" y="22" width="9" height="12" rx="3" fill="#3cb44b"/>'],
+  ['#9ad0ff','#58b947','<g fill="#6b5b8a"><rect x="60" y="12" width="9" height="34"/><rect x="88" y="12" width="9" height="34"/></g><rect x="24" y="42" width="14" height="4" rx="1" fill="#ffd23f"/><circle cx="118" cy="38" r="5" fill="#ff5d5d"/><rect x="20" y="30" width="9" height="12" rx="3" fill="#4363d8"/>'],
+  ['#6fb4ff','#58b947','<g fill="#a0693a"><rect x="14" y="40" width="30" height="5" rx="2"/><rect x="54" y="28" width="30" height="5" rx="2"/><rect x="96" y="16" width="30" height="5" rx="2"/></g><path d="M70 40v-5M68 36l2-3 2 3M110 28v-5M108 24l2-3 2 3" stroke="#fff" stroke-width="2" fill="none"/><g fill="#fff" opacity=".85"><ellipse cx="30" cy="12" rx="14" ry="5"/><ellipse cx="110" cy="8" rx="12" ry="4"/></g>'],
+  ['#e9a36b','#7a5a3a','<g fill="#d5dae3" stroke="#556" stroke-width="1.5"><circle cx="40" cy="34" r="8"/><circle cx="104" cy="26" r="8"/></g><path d="M64 46l4-9 4 9zM72 46l4-9 4 9z" fill="#b8c0cc"/><rect x="82" y="34" width="26" height="6" rx="2" fill="#a0693a"/><rect x="118" y="38" width="3" height="8" fill="#555"/>'],
+  ['#5a5fa8','#4a3f6a','<g><rect x="58" y="14" width="12" height="12" fill="#e6194b"/><rect x="58" y="26" width="12" height="12" fill="#3cb44b"/><rect x="58" y="38" width="12" height="12" fill="#4363d8"/><rect x="82" y="26" width="12" height="12" fill="#f58231"/><rect x="82" y="38" width="12" height="12" fill="#911eb4"/></g><circle cx="120" cy="14" r="6" fill="#ffd23f"/>'],
+  ['#1f2447','#3b3560','<g fill="#fff"><circle cx="14" cy="10" r="1.5"/><circle cx="50" cy="16" r="1.2"/><circle cx="90" cy="8" r="1.5"/><circle cx="130" cy="14" r="1.2"/></g><circle cx="120" cy="16" r="8" fill="#ffe9a8"/><g fill="#d5dae3" stroke="#889" stroke-width="1.5"><circle cx="34" cy="38" r="7"/><circle cx="76" cy="36" r="7"/></g><rect x="100" y="32" width="3" height="14" fill="#aaa"/><path d="M103 32l11 4-11 4z" fill="#ff5d5d"/>']
+];
+function levelThumb(i) { const t = THEMES[i % THEMES.length]; return `<svg viewBox="0 0 150 60" preserveAspectRatio="xMidYMid slice"><rect width="150" height="60" fill="${t[0]}"/>${t[2]}<rect y="46" width="150" height="14" fill="${t[1]}" opacity="${i === 2 ? 0 : 1}"/></svg>`; }
+function renderLevelGrid() {
+  const cur = +$('startLevel').value || 0;
+  $('lvlGrid').innerHTML = levelList.map((l, i) => `<button type="button" class="lc${i === cur ? ' on' : ''}" data-i="${i}" title="${l.name}">${levelThumb(i)}<i>${i + 1}</i>${l.min > 1 ? `<u>${l.min}+</u>` : ''}<b>${l.name.replace(/^\d+\.\s*/, '')}</b></button>`).join('');
+  for (const b of $('lvlGrid').children) b.onclick = () => { $('startLevel').value = b.dataset.i; for (const c of $('lvlGrid').children) c.classList.toggle('on', c === b); };
+}
 fetch('/levels.json').then(r => r.json()).then(list => {
   levelList = list;
   const opts = list.map((l, i) => `<option value="${i}">${l.name}${l.min > 1 ? `  (${l.min}+ players)` : ''}</option>`).join('');
@@ -136,6 +164,7 @@ fetch('/levels.json').then(r => r.json()).then(list => {
   $('startLevel').value = localStorage.getItem('startLevel') || '0';
   if (!$('startLevel').value) $('startLevel').value = '0';
   if (params.get('level')) $('startLevel').value = String(Math.max(0, +params.get('level') - 1));
+  renderLevelGrid();
 }).catch(() => {});
 $('lvlSel').onchange = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'go', l: +$('lvlSel').value })); $('lvlSel').blur(); };
 
