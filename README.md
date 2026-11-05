@@ -56,7 +56,7 @@ cd prototype
 npm test
 ```
 
-106 automated checks plus physics assertions, all headless:
+108 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
