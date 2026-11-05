@@ -159,9 +159,20 @@ let nextId = 0;
 const rooms = new Map();
 
 const LEVEL_LIST = JSON.stringify(LEVELS.map(l => ({ name: l.name, min: l.min, premium: !!l.premium })));
-const STATIC = { '/': ['public/index.html', 'text/html'], '/pad': ['public/pad.html', 'text/html'], '/llms.txt': ['public/llms.txt', 'text/plain; charset=utf-8'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
+const STATIC = { '/': ['public/index.html', 'text/html'], '/pad': ['public/pad.html', 'text/html'], '/llms.txt': ['public/llms.txt', 'text/plain; charset=utf-8'], '/qrcode.min.js': ['public/qrcode.min.js', 'text/javascript'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
+// LAN addresses, so a laptop running the server can tell phones on the same wifi where to connect (local mode)
+function lanAddrs() {
+  const out = [];
+  for (const [name, list] of Object.entries(require('os').networkInterfaces())) {
+    if (/^(utun|bridge|vmnet|vboxnet|docker|veth|awdl|llw|lo|tun|tap|br-|virbr|ham)/i.test(name)) continue; // VPNs, VMs and containers are not the wifi
+    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push({ ip: a.address, pri: /^(en0|wlan|wl|wi-?fi)/i.test(name) ? 0 : 1 });
+  }
+  const rank = ip => /^192\.168\./.test(ip) ? 0 : /^10\./.test(ip) ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3;
+  return out.sort((a, b) => a.pri - b.pri || rank(a.ip) - rank(b.ip)).map(o => o.ip);
+}
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
+  if (url === '/lan.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(JSON.stringify({ ips: lanAddrs(), port: PORT })); }
   if (url === '/config.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(JSON.stringify({ donate: DONATE_URL, buy: BUY_URL, free: FREE_PLAYERS, max: MAX_PLAYERS })); }
   if (url === '/levels.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(LEVEL_LIST); }
   const f = STATIC[url];
@@ -235,6 +246,9 @@ function startLoop() {
 
 if (require.main === module) {
   startLoop();
-  server.listen(PORT, () => console.log(`Server running: http://localhost:${PORT}  (max ${MAX_PLAYERS}/room)`));
+  server.listen(PORT, () => {
+    console.log(`Server running: http://localhost:${PORT}  (max ${MAX_PLAYERS}/room)`);
+    for (const ip of lanAddrs()) console.log(`  on your wifi/LAN (phones): http://${ip}:${PORT}`);
+  });
 }
-module.exports = { Room, PW, PH, TILE };
+module.exports = { lanAddrs, Room, PW, PH, TILE };

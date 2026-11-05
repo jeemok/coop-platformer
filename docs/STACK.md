@@ -70,7 +70,7 @@ Levels 9-12 are `premium: true`; `Room.load` falls back to level 1 if the room i
 
 ## Latency (phones)
 
-A phone controller sends unnumbered inputs and has no prediction, so its delay is: phone to server one-way + up to 16 ms server tick + snapshot interval + the shared screen's interpolation buffer + server to screen. Rooms with a screen therefore get 60 Hz snapshots (16 ms) and the screen interpolates only 60 ms behind (100 ms and 30 Hz otherwise). The controller shows its round-trip time (green under 60 ms). The part we cannot fix in code is the route phone, cloud server, laptop: if the phone is on mobile data and the server is far away, that alone can exceed 100 ms.
+A phone controller sends unnumbered inputs and has no prediction, so its delay is: phone to server one-way + up to 16 ms server tick + snapshot interval + the shared screen's interpolation buffer + server to screen. Rooms with a screen therefore get 60 Hz snapshots (16 ms) and the screen interpolates only 60 ms behind (100 ms and 30 Hz otherwise). The controller shows its round-trip time (green under 60 ms). **Local mode** (`npm run local`, `local.js`) removes the cloud hop: the laptop runs the server, `GET /lan.json` gives its wifi address (VPN/VM/container interfaces are skipped), and the shared screen builds the QR from that address instead of `localhost`. The QR library is served from `/qrcode.min.js`, so it needs no internet. Phone pages are plain http on the LAN, so wake-lock is unavailable (fullscreen still works). The part we cannot fix in code over the internet is the route phone, cloud server, laptop: if the phone is on mobile data and the server is far away, that alone can exceed 100 ms.
 
 ## Gameplay rules
 

@@ -40,6 +40,18 @@ Four extra levels for unlocked rooms only, built around the **choir gate**: a ro
 
 ![Choir gate](docs/screenshots/party-pack.png)
 
+## Local mode (lowest lag: phones talk to your laptop over wifi)
+
+The hosted game sends every button press phone, to the cloud, to the shared screen. If that feels laggy, run the game on the laptop instead so phones connect straight to it over your wifi:
+
+```bash
+cd prototype
+npm install      # first time only
+npm run local
+```
+
+It starts the server, prints the address phones should use, and opens the shared screen (with a QR code) in the laptop's browser. Laptop and phones must be on the **same wifi**; scan the QR on each phone and hold it sideways. The QR code library is bundled, so it works even on a network with no internet (a phone hotspot is fine). If the laptop's firewall asks about incoming connections for Node, allow it. If a phone can't scan, type the `http://<laptop-ip>:3000/pad` address that `npm run local` prints. Local mode keeps the same rules as the hosted game (5 players free, Party Pack key for more); `PORT=3017 npm run local` changes the port.
+
 ## Payments and support
 
 - **Donate:** [buymeacoffee.com/jeemok](https://buymeacoffee.com/jeemok) (button on the home page and in the game bar).
@@ -62,7 +74,7 @@ cd prototype
 npm test
 ```
 
-124 automated checks plus physics assertions, all headless:
+126 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
@@ -83,6 +95,7 @@ The browser client itself (drawing, touch) is not covered by automated tests; it
 
 ```
 prototype/
+  local.js           `npm run local`: start the server for wifi/LAN play and open the shared screen
   server.js          authoritative game server (HTTP + WebSocket, rooms, 60 Hz tick)
   sim.js             shared physics, used by BOTH the server and the browser
   predict.js         client-side prediction + server reconciliation

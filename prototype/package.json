@@ -5,7 +5,8 @@
   "description": "Online co-op push/stack platformer",
   "scripts": {
     "start": "node server.js",
-    "test": "node test.js && node test-classic.js && node test-levels.js && node test-predict.js && node test-license.js && node test-server.js"
+    "test": "node test.js && node test-classic.js && node test-levels.js && node test-predict.js && node test-license.js && node test-server.js",
+    "local": "node local.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

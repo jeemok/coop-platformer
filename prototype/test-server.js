@@ -83,6 +83,10 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   const lj = JSON.parse(await get('/levels.json'));
   check('/levels.json marks exactly the last 4 levels as premium', () => assert.deepStrictEqual(lj.map(l => l.premium), [...Array(8).fill(false), ...Array(4).fill(true)]));
   fl.ws.close(); pr.ws.close(); await sleep(150);
+  const lan = JSON.parse(await get('/lan.json'));
+  check('/lan.json lists this machine\'s wifi addresses and the port (local mode)', () => { assert(Array.isArray(lan.ips)); assert.strictEqual(lan.port, PORT); });
+  const qr = await get('/qrcode.min.js');
+  check('qrcode.min.js is served by the game itself', () => assert(/QRCode/.test(qr)));
   const cfg = JSON.parse(await get('/config.json'));
   check('/config.json exposes the donate link and caps', () => { assert(/buymeacoffee\.com\/jeemok/.test(cfg.donate)); assert.strictEqual(cfg.free, 5); assert.strictEqual(cfg.max, 10); });
   for (const c of [...free, sixth, ...more, over, paidRoom, ...guests, badCreate]) c.ws.close();

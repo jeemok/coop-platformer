@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/qrcode.min.js"></script>
 <title>Co-op Platformer</title>
 <meta name="description" content="Free online co-op puzzle platformer for 1-10 players. Stack on friends, push, carry the key to the door. Play on laptops/phones, or on one big screen with phones as controllers.">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
@@ -256,11 +256,21 @@ $('go').onclick = () => {
   };
   ws.onclose = () => { if ($('game').style.display === 'block') $('info').textContent = 'Disconnected. Refresh to rejoin.'; };
 };
-$('copy').onclick = () => { const link = location.origin + (screenMode ? '/pad?room=' : '/?room=') + code, lab = screenMode ? 'Copy phone link' : 'Copy invite link'; try { navigator.clipboard.writeText(link); } catch (e) {} $('copy').textContent = 'Copied!'; setTimeout(() => $('copy').textContent = lab, 1500); $('copy').blur(); };
+$('copy').onclick = () => { const link = (screenMode ? padOrigin : location.origin) + (screenMode ? '/pad?room=' : '/?room=') + code, lab = screenMode ? 'Copy phone link' : 'Copy invite link'; try { navigator.clipboard.writeText(link); } catch (e) {} $('copy').textContent = 'Copied!'; setTimeout(() => $('copy').textContent = lab, 1500); $('copy').blur(); };
 
 // one-screen mode: a QR code that opens the phone controller for this room
+// where phones should go: this page's own address, unless we are on localhost (local mode), then the laptop's wifi address
+let padOrigin = location.origin;
+function resolvePadOrigin() {
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return Promise.resolve();
+  return fetch('/lan.json').then(r => r.json()).then(l => { if (l.ips && l.ips.length) padOrigin = 'http://' + l.ips[0] + ':' + (l.port || location.port); }).catch(() => {});
+}
 function showJoinBox() {
-  const url = location.origin + '/pad?room=' + code; $('jcode').textContent = code; $('jurl').textContent = location.host + '/pad';
+  resolvePadOrigin().then(drawJoinBox);
+}
+function drawJoinBox() {
+  const url = padOrigin + '/pad?room=' + code; $('jcode').textContent = code; $('jurl').textContent = padOrigin.replace(/^https?:\/\//, '') + '/pad';
+  $('qr').innerHTML = '';
   $('copy').textContent = 'Copy phone link';
   try { new QRCode($('qr'), { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('qr').textContent = url; }
   $('joinbox').style.display = 'block'; $('joinbox').onclick = () => { if ($('joinbox').className === 'small') $('joinbox').className = 'big'; else if (roster.size) $('joinbox').className = 'small'; };

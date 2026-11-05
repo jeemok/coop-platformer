@@ -21,4 +21,5 @@ Source: https://github.com/jeemok/coop-platformer
 - Authoritative Node 22 + `ws` server (60 Hz tick, 30 Hz snapshots), shared deterministic physics in `prototype/sim.js`, client prediction in `prototype/predict.js`, single-file canvas client in `prototype/public/index.html`, phone controller in `prototype/public/pad.html`.
 - WebSocket protocol (same origin as the page): first message `{"t":"join","room":"ABCD","nick":"Name","role":"pad"|"screen"|omitted,"level":1}`. Inputs: `{"t":"in","l":0|1,"r":0|1,"j":0|1}` (pads send these unnumbered every ~250 ms). `key` (optional, on join) or `{"t":"unlock","key":"..."}` (host only) unlocks 6-10 players. `role:"screen"` is a watch-only display that can send `{"t":"go","l":N}` and `{"t":"restart"}`.
 - `GET /levels.json` lists level names. Run locally: `cd prototype && npm install && npm start`; tests: `npm test`.
+- Local mode (lowest latency, phones over wifi): `cd prototype && npm install && npm run local` on a laptop; phones on the same wifi scan the QR. `GET /lan.json` lists the laptop's LAN addresses.
 - Docs: README.md, docs/STACK.md (architecture, netcode, costs, known limits).
