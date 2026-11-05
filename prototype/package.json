@@ -2,7 +2,7 @@
   "name": "coop-platformer-prototype",
   "version": "0.0.1",
   "private": true,
-  "description": "THROWAWAY prototype: online co-op push/stack platformer",
+  "description": "Online co-op push/stack platformer",
   "scripts": {
     "start": "node server.js",
     "test": "node test.js && node test-classic.js && node test-levels.js && node test-predict.js && node test-server.js"

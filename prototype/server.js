@@ -1,4 +1,4 @@
-// THROWAWAY PROTOTYPE: authoritative game server (Node + ws).
+// Authoritative game server (Node + ws).
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const { LEVELS } = require('./levels');
@@ -202,6 +202,6 @@ function startLoop() {
 
 if (require.main === module) {
   startLoop();
-  server.listen(PORT, () => console.log(`Prototype running: http://localhost:${PORT}  (max ${MAX_PLAYERS}/room)`));
+  server.listen(PORT, () => console.log(`Server running: http://localhost:${PORT}  (max ${MAX_PLAYERS}/room)`));
 }
 module.exports = { Room, PW, PH, TILE };

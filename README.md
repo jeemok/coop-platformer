@@ -1,4 +1,4 @@
-# Co-op Platformer (working title) — prototype
+# Co-op Platformer
 
 A free, browser-based, online co-op puzzle platformer for 1–10 players. Players push each other,
 stand on each other's heads, carry the key to the door, and everyone has to get through together.
@@ -7,10 +7,8 @@ It is **inspired by the mechanics** of games like Pico Park, but it is an origin
 levels and art. Nothing was decompiled, extracted or copied from Pico Park or any TECOPARK asset, and
 none should be added.
 
-> **Status: throwaway prototype.** Built to test the feel of the idea. The written design is in
-> [`docs/superpowers/specs/`](docs/superpowers/specs/2026-11-01-coop-platformer-design.md);
-> keeping this code as the real foundation needs an explicit decision. See [`docs/STACK.md`](docs/STACK.md)
-> for the stack, architecture, netcode, costs and known limits.
+> The written design is in [`docs/superpowers/specs/`](docs/superpowers/specs/2026-11-01-coop-platformer-design.md).
+> See [`docs/STACK.md`](docs/STACK.md) for the stack, architecture, netcode, costs and known limits.
 
 ## Play locally
 

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<title>Co-op Platformer (prototype)</title>
+<title>Co-op Platformer</title>
 <style>
   html,body{margin:0;background:#1b1d2a;color:#eee;font-family:system-ui,sans-serif;height:100%}
   #join{max-width:360px;margin:12vh auto;padding:24px;background:#262a3d;border-radius:12px}
@@ -9,6 +9,31 @@
   #join input,#join button{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;border-radius:8px;border:0;font-size:16px}
   #join button{background:#4363d8;color:#fff;cursor:pointer}
   #err{color:#ff7b7b;min-height:1.2em}
+
+  body:not(.playing){background:linear-gradient(#5db6f2,#bfe6ff 55%,#bfe6ff)}
+  #home{position:relative;min-height:100vh;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:3vh 16px 40px;box-sizing:border-box}
+  body.playing #home{display:none}
+  #scene{position:fixed;left:0;right:0;bottom:0;width:100%;height:46vh;min-height:240px;pointer-events:none}
+  #scene .cl{animation:drift 60s linear infinite}
+  #scene .cl.b{animation-duration:90s;animation-delay:-30s}
+  @keyframes drift{from{transform:translateX(-300px)}to{transform:translateX(1700px)}}
+  #scene .ch{animation:hop 1.6s ease-in-out infinite}
+  #scene .ch.b{animation-delay:-.5s}#scene .ch.c{animation-delay:-1.1s}
+  @keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+  #scene .saw{transform-box:fill-box;transform-origin:center;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #scene .key{animation:bob 2s ease-in-out infinite}
+  @keyframes bob{50%{transform:translateY(-8px)}}
+  #logo{position:relative;text-align:center;margin:2vh 0 4px}
+  #logo h1{margin:0;font:900 clamp(36px,7vw,68px)/1 system-ui,sans-serif;color:#fff;letter-spacing:.01em;text-shadow:0 5px 0 #2f4fb8,0 9px 0 #1d3282,0 14px 24px rgba(0,0,0,.3)}
+  #logo h1 span{color:#ffd23f}
+  #logo p{margin:14px 0 0;font-size:clamp(14px,2.2vw,19px);color:#12326a;font-weight:600}
+  #join{position:relative;z-index:1;width:100%;box-sizing:border-box;margin:14px auto 0;padding:18px 22px;background:rgba(27,29,42,.92);box-shadow:0 12px 40px rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.12)}
+  #join h2{display:none}
+  #join #go{background:#ffb703;color:#2b1d00;font-weight:800;font-size:18px;padding:13px;box-shadow:0 4px 0 #b37d00}
+  #join #go:active{transform:translateY(3px);box-shadow:0 1px 0 #b37d00}
+  #feat{position:relative;z-index:1;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:18px;max-width:560px}
+  #feat span{background:rgba(255,255,255,.75);color:#12326a;border-radius:999px;padding:6px 13px;font-size:13px;font-weight:600}
   #game{display:none}
   canvas{display:block;width:100vw;max-height:calc(100vh - 40px);aspect-ratio:1280/512;background:#8fd3ff;margin:0 auto}
   #bar{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;font-size:14px}
@@ -40,8 +65,9 @@
   @media (pointer:coarse) and (orientation:portrait){ body.playing #rot{display:flex} }
   body.screenmode #bar #ping{display:none}
 </style></head><body>
+<div id="home">
+<div id="logo"><h1>Co-op <span>Platformer</span></h1><p>Stack, push and carry each other to the door. Nobody gets left behind.</p></div>
 <div id="join">
-  <h2>Co-op Platformer <small>(prototype)</small></h2>
   <div id="modes"><button id="mOnline" class="on">Online<small>everyone joins from their own laptop or phone</small></button><button id="mParty">One screen<small>this screen shows the game, everyone uses their phone as a controller</small></button></div>
   <input id="nick" placeholder="Your nickname" maxlength="12">
   <input id="room" placeholder="Room code (blank = new room)" maxlength="8">
@@ -51,6 +77,23 @@
   <div id="partyNote" style="display:none;font-size:13px;opacity:.8">Opens the game on this screen with a QR code. Everyone scans it with their phone to get a controller.</div>
   <div id="err"></div>
   <p style="font-size:13px;opacity:.7">Move: arrows / A D. Jump: space / W / up (hold = high, tap = hop). Stand on friends, push them, get the key to the door, then everyone enter the door. M = mute.</p>
+</div>
+<div id="feat"><span>1-10 players</span><span>Phone or laptop</span><span>One-screen party mode</span><span>8 long levels</span><span>Free to play</span></div>
+<svg id="scene" viewBox="0 0 1440 400" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+<circle cx="1130" cy="130" r="48" fill="#ffe66d"/>
+<g fill="#fff" opacity=".9"><g class="cl"><ellipse cx="0" cy="60" rx="70" ry="22"/><ellipse cx="40" cy="45" rx="45" ry="24"/></g><g class="cl b"><ellipse cx="0" cy="120" rx="90" ry="26"/><ellipse cx="-40" cy="105" rx="50" ry="26"/></g></g>
+<path d="M0 300 Q180 150 380 280 T760 270 T1140 250 T1440 280 V400 H0Z" fill="#9bd8b4"/>
+<path d="M0 330 Q220 220 460 320 T900 310 T1440 300 V400 H0Z" fill="#6fc08e"/>
+<rect y="340" width="1440" height="60" fill="#8a5a36"/><rect y="332" width="1440" height="16" fill="#58b947"/>
+<g fill="#6e4528" opacity=".6"><circle cx="120" cy="372" r="5"/><circle cx="420" cy="380" r="4"/><circle cx="800" cy="368" r="5"/><circle cx="1100" cy="378" r="4"/></g>
+<g transform="translate(40,332)" fill="#b8c0cc" stroke="#0003"><path d="M0 0l10-26 10 26zM20 0l10-26 10 26zM40 0l10-26 10 26z"/></g>
+<g transform="translate(390,0)"><g class="saw"><circle cx="30" cy="318" r="26" fill="#d5dae3" stroke="#556" stroke-width="3"/><path d="M30 288l6 14 14-6-6 14 14 6-14 6 6 14-14-6-6 14-6-14-14 6 6-14-14-6 14-6-6-14 14 6z" fill="#aab2bf"/><circle cx="30" cy="318" r="6" fill="#556"/></g></g>
+<g transform="translate(180,0)"><g transform="translate(0,290)"><g class="ch c"><rect width="34" height="42" rx="9" fill="#4363d8" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g><g transform="translate(40,290)"><g class="ch b"><rect width="34" height="42" rx="9" fill="#3cb44b" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g><g transform="translate(20,248)"><g class="ch a"><rect width="34" height="42" rx="9" fill="#e6194b" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g></g>
+<g transform="translate(1060,0)"><g transform="translate(0,290)"><g class="ch b"><rect x="0" y="0" width="34" height="42" rx="9" fill="#f58231" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g><g transform="translate(-40,290)"><g class="ch a"><rect x="0" y="0" width="34" height="42" rx="9" fill="#911eb4" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g><g transform="translate(-20,248)"><g class="ch c"><rect x="0" y="0" width="34" height="42" rx="9" fill="#42d4f4" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g><g transform="translate(-20,206)"><g class="ch b"><rect x="0" y="0" width="34" height="42" rx="9" fill="#f032e6" stroke="#0004" stroke-width="2"/><rect x="5" y="9" width="24" height="14" rx="6" fill="#fff"/><circle cx="13" cy="16" r="3.4" fill="#222"/><circle cx="23" cy="16" r="3.4" fill="#222"/></g></g></g>
+<g transform="translate(1050,190)"><g class="key"><circle cx="0" cy="0" r="11" fill="none" stroke="#ffd23f" stroke-width="6"/><path d="M10 0h30M30 0v10M38 0v8" stroke="#ffd23f" stroke-width="6" fill="none" stroke-linecap="round"/></g></g>
+<g transform="translate(1260,260)"><rect width="70" height="80" rx="30 30 0 0" fill="#6b3f1e" stroke="#3a210f" stroke-width="4"/><rect x="10" y="10" width="50" height="70" rx="22 22 0 0" fill="#2a1a40"/><circle cx="52" cy="48" r="4" fill="#ffd23f"/></g>
+<g transform="translate(1190,296)"><rect x="0" y="0" width="6" height="40" fill="#555"/><path d="M6 0l32 10-32 10z" fill="#ff5d5d"/></g>
+</svg>
 </div>
 <div id="rot">Turn your phone sideways to play<br>(or use the Controller page on your phone for the one-screen mode)</div>
 <div id="joinbox"><div class="hint">Scan with your phone to get a controller</div><div class="qr" id="qr"></div><div class="code" id="jcode"></div><div class="url" id="jurl"></div></div>

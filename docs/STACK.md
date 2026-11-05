@@ -1,6 +1,6 @@
 # Stack, architecture and costs
 
-Last updated 2026-11-05 (after the first playtest: moving platforms, then long hard levels). Everything here describes the **prototype**.
+Last updated 2026-11-05 (after the first playtest: moving platforms, then long hard levels).
 
 ## Stack
 
@@ -123,7 +123,7 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 - The camera follows only your own player, so you can lose sight of friends who run ahead (the mini-map shows them).
 - The jump is shorter than before (reach ~115 px horizontally), so pits must stay at 3 tiles or less.
 
-## Next steps (if the prototype feels right)
+## Next steps
 
 1. Playtest and tune: jump height, speed, level pacing.
 2. Decide the paid unlock model, price, and seller/tax setup (open questions in the design doc).
