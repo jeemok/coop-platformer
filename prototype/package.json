@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test.js && node test-classic.js && node test-levels.js && node test-predict.js && node test-license.js && node test-server.js",
-    "local": "node local.js"
+    "local": "node local.js",
+    "key": "node keygen.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

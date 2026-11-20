@@ -4,7 +4,7 @@ const { LEVELS } = require('./levels');
 const PORT = 3900 + Math.floor(Math.random() * 90);
 process.env.PORT = String(PORT);
 const { spawn } = require('child_process');
-const srv = spawn('node', ['server.js'], { env: { ...process.env, PORT: String(PORT), UNLOCK_KEYS: 'GOOD-KEY,OTHER-KEY' }, stdio: 'ignore' });
+const srv = spawn('node', ['server.js'], { env: { ...process.env, PORT: String(PORT), UNLOCK_KEYS: 'GOOD-KEY,OTHER-KEY', KEY_SECRET: 'srv-secret' }, stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const until = async (fn, ms = 4000) => { for (let t = 0; t < ms && !fn(); t += 50) await sleep(50); }; // wait for a condition (robust on a busy machine)
 const get = p => new Promise((res, rej) => http.get({ host: '127.0.0.1', port: PORT, path: p }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => res(d)); }).on('error', rej));
@@ -73,6 +73,9 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   check('a room created with a valid key is unlocked from the start', () => { assert.strictEqual(paidRoom.roster.cap, 10); assert.strictEqual(paidRoom.roster.p.length, 10); });
   const badCreate = node('BADK1', undefined, 'x', undefined, 'wrong'); await sleep(250);
   check('a room created with a bad key is just a free room', () => { assert(badCreate.id); assert.strictEqual(badCreate.roster.cap, 5); });
+  const signed = require('./license').makeKey('srv-secret'); const sk = node('SIGN1', undefined, 'h', undefined, signed); await sleep(300);
+  check('a room created with a generated (signed) key is unlocked', () => assert.strictEqual(sk.roster.cap, 10));
+  sk.ws.close();
   console.log('Party Pack levels:');
   const fl = node('PREM1', undefined, 'h', 8); await sleep(250);
   check('a free room asked to start on a premium level starts on level 1', () => assert.deepStrictEqual(fl.lvls, [1]));

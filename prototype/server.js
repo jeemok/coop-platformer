@@ -9,7 +9,7 @@ const PORT = +process.env.PORT || 3000;
 const MAX_PLAYERS = +process.env.MAX_PLAYERS || 10;
 const FREE_PLAYERS = +process.env.FREE_PLAYERS || 5; // rooms above this need the paid unlock (up to MAX_PLAYERS)
 const DONATE_URL = process.env.DONATE_URL || 'https://buymeacoffee.com/jeemok';
-const BUY_URL = process.env.BUY_URL || '';
+const BUY_URL = process.env.BUY_URL || DONATE_URL; // where a Party Pack is sold (a Buy Me a Coffee extra); the key is emailed by hand
 const FREE_LEVELS = LEVELS.filter(l => !l.premium).length; // levels after these need an unlocked room
 const MAX_ROOMS = +process.env.MAX_ROOMS || 50;
 const COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990'];

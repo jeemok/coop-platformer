@@ -21,6 +21,10 @@ services:
         value: "5"
       - key: BUY_URL        # store page where a Party Pack key is sold (set in the dashboard)
         sync: false
+      - key: KEY_SECRET     # signs Party Pack keys (make them with `npm run key`); changing it voids every key already sold
+        sync: false
+      - key: REVOKED_KEYS   # comma-separated keys to switch off (refunds, leaks)
+        sync: false
       - key: POLAR_ORG_ID   # Polar organization id; setting it turns on key checking
         sync: false
       - key: POLAR_BENEFIT_ID  # the License Key benefit on the Party Pack product; only its keys unlock rooms

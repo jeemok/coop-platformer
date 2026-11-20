@@ -19,4 +19,15 @@ const resp = (j, status = 200) => async () => ({ ok: status >= 200 && status < 3
   let calls = 0; lic._setFetch(async () => { calls++; return resp(good)(); }); await ok('a validated key is cached', async () => { await lic.check('K7'); await lic.check('K7'); assert.strictEqual(calls, 1); });
   delete process.env.POLAR_ORG_ID; lic._setFetch(resp(good)); await ok('with no provider configured only UNLOCK_KEYS count', async () => assert.strictEqual(await lic.check('K8'), false));
   process.env.UNLOCK_KEYS = 'A, B'; await ok('static keys work', async () => assert.strictEqual(await lic.check('B'), true));
+  console.log('Signed keys (Buy Me a Coffee sales, no database):');
+  process.env.KEY_SECRET = 'test-secret'; delete process.env.UNLOCK_KEYS; lic._setFetch(async () => { throw new Error('no network'); });
+  const k = lic.makeKey('test-secret'); const raw = k.replace(/-/g, '');
+  await ok('a generated key is accepted', async () => { assert.strictEqual(await lic.check(k), true); });
+  await ok('lowercase, spaces and missing dashes still work', async () => { assert.strictEqual(await lic.check(' ' + k.toLowerCase() + ' '), true); assert.strictEqual(await lic.check(raw), true); assert.strictEqual(await lic.check(k.replace(/-/g, ' ')), true); });
+  await ok('a tampered key is rejected', async () => { const last = raw.slice(-1); const bad = raw.slice(0, -1) + (last === 'A' ? 'B' : 'A'); assert.strictEqual(await lic.check(bad), false); });
+  await ok('a key made with another secret is rejected', async () => assert.strictEqual(await lic.check(lic.makeKey('other-secret')), false));
+  await ok('wrong length and garbage are rejected', async () => { assert.strictEqual(await lic.check('PP-AAAA'), false); assert.strictEqual(await lic.check('x'.repeat(40)), false); });
+  process.env.REVOKED_KEYS = 'zzz, ' + k.toLowerCase(); await ok('a revoked key is rejected', async () => assert.strictEqual(await lic.check(k), false)); delete process.env.REVOKED_KEYS;
+  const k2 = lic.makeKey('test-secret'); await ok('two generated keys differ', async () => assert.notStrictEqual(k, k2));
+  delete process.env.KEY_SECRET; await ok('with no KEY_SECRET signed keys are rejected, and none can be made', async () => { assert.strictEqual(await lic.check(k2), false); assert.throws(() => lic.makeKey('')); });
 })();
