@@ -59,7 +59,7 @@ It starts the server, prints the address phones should use, and opens the shared
 ## Payments and support
 
 - **Donate:** [buymeacoffee.com/jeemok](https://buymeacoffee.com/jeemok) (button on the home page and in the game bar).
-- **Party Pack (6-10 players + levels 9-12):** sold as a [Buy Me a Coffee](https://buymeacoffee.com/jeemok) extra. A host enters a key when creating a room, or clicks *Unlock 10 players* in the game bar, and that room holds up to 10 and opens the Party Pack levels. Keys are signed, so the server needs no database: run `KEY_SECRET=... npm run key -- 3` to make keys, email one to each buyer, and set the same `KEY_SECRET` in the host's environment. `REVOKED_KEYS=a,b` switches keys off (refunds, leaks); changing `KEY_SECRET` voids all keys. Set `BUY_URL` to the extra's page. Also accepted: fixed keys in `UNLOCK_KEYS=a,b`, and an optional [Polar](https://polar.sh) check (`POLAR_ORG_ID`, `POLAR_BENEFIT_ID`; off unless set). Keys are not bound to one room, so a shared key works for anyone who has it.
+- **Party Pack (6-10 players + levels 9-12):** sold as a [Buy Me a Coffee](https://buymeacoffee.com/jeemok) extra. A host enters a key when creating a room, or clicks *Unlock 10 players* in the game bar, and that room holds up to 10 and opens the Party Pack levels. Keys are signed, so the server needs no database. **Automatic claim (no email sending):** set `BMC_TOKEN` (a Buy Me a Coffee API token) and `KEY_SECRET`, and point the extra's redirect-after-purchase at `/claim`; buyers type the email they paid with and the page shows their key, found through Buy Me a Coffee's read-only Extras API (beta, response shape unconfirmed: run `BMC_TOKEN=... npm run bmc-check` to see the real field names; `BMC_EXTRA_TITLE` defaults to `Party Pack`). Manual alternative: run `KEY_SECRET=... npm run key -- 3` to make keys, email one to each buyer, and set the same `KEY_SECRET` in the host's environment. `REVOKED_KEYS=a,b` switches keys off (refunds, leaks); changing `KEY_SECRET` voids all keys. Set `BUY_URL` to the extra's page. Also accepted: fixed keys in `UNLOCK_KEYS=a,b`, and an optional [Polar](https://polar.sh) check (`POLAR_ORG_ID`, `POLAR_BENEFIT_ID`; off unless set). Keys are not bound to one room, so a shared key works for anyone who has it.
 
 ## Run it yourself
 
@@ -85,7 +85,7 @@ cd prototype
 npm test
 ```
 
-140 automated checks plus physics assertions, all headless:
+155 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
@@ -94,6 +94,7 @@ npm test
 | `test-classic.js` | The 12 original 40-tile levels, kept as fixtures, plus negative tests |
 | `test-server.js` | Real WebSockets: level choice, host rights, one-screen mode (screen vs pads, idle pads stop) |
 | `test-license.js` | Party Pack key checks with the payment API mocked: signed keys (accepted, tampered, revoked, wrong secret) and provider outages never unlock |
+| `test-claim.js` | The claim-your-key lookup with the Buy Me a Coffee API mocked: right extra only, refunds rejected, API errors never give a key |
 | `test-predict.js` | The real client prediction against the real server over a simulated laggy network |
 
 The browser client itself (drawing, touch) is not covered by automated tests; it was checked by hand in headless Chrome, not yet on real phones.

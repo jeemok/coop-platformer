@@ -2,7 +2,8 @@
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const { LEVELS } = require('./levels');
-const license = require('./license');
+const license = require('./license'), claimer = require('./claim');
+const claimHits = new Map(); // ip -> [timestamps], about 10 claims a minute each
 const { Sim, TILE, PW, PH, ov, box } = require('./sim');
 
 const PORT = +process.env.PORT || 3000;
@@ -159,7 +160,7 @@ let nextId = 0;
 const rooms = new Map();
 
 const LEVEL_LIST = JSON.stringify(LEVELS.map(l => ({ name: l.name, min: l.min, premium: !!l.premium })));
-const STATIC = { '/': ['public/index.html', 'text/html'], '/pad': ['public/pad.html', 'text/html'], '/llms.txt': ['public/llms.txt', 'text/plain; charset=utf-8'], '/qrcode.min.js': ['public/qrcode.min.js', 'text/javascript'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
+const STATIC = { '/': ['public/index.html', 'text/html'], '/pad': ['public/pad.html', 'text/html'], '/claim': ['public/claim.html', 'text/html'], '/llms.txt': ['public/llms.txt', 'text/plain; charset=utf-8'], '/qrcode.min.js': ['public/qrcode.min.js', 'text/javascript'], '/sim.js': ['sim.js', 'text/javascript'], '/predict.js': ['predict.js', 'text/javascript'] };
 // LAN addresses, so a laptop running the server can tell phones on the same wifi where to connect (local mode)
 function lanAddrs() {
   const out = [];
@@ -174,6 +175,15 @@ const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   if (url === '/lan.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(JSON.stringify({ ips: lanAddrs(), port: PORT })); }
   if (url === '/config.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(JSON.stringify({ donate: DONATE_URL, buy: BUY_URL, free: FREE_PLAYERS, max: MAX_PLAYERS })); }
+  if (url === '/claim' && req.method === 'POST') {
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',')[0].trim(), now = Date.now();
+    const hits = (claimHits.get(ip) || []).filter(t => now - t < 60000); hits.push(now); claimHits.set(ip, hits); if (claimHits.size > 5000) claimHits.clear();
+    const reply = (code, o) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+    if (hits.length > 10) return reply(429, { error: 'slow' });
+    let body = '', big = false; req.on('data', c => { body += c; if (body.length > 1000) { big = true; req.destroy(); } });
+    req.on('end', async () => { if (big) return; let email = ''; try { email = JSON.parse(body).email; } catch {} reply(200, await claimer.claim(email)); });
+    return;
+  }
   if (url === '/levels.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(LEVEL_LIST); }
   const f = STATIC[url];
   if (!f) { res.writeHead(404); return res.end('Not found'); }

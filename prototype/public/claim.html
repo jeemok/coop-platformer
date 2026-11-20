@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get your Party Pack key</title>
+<style>
+  :root{color-scheme:dark;--bg:#1b1d2a;--fg:#eee;--accent:#ffd23f;--card:#262a3d}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;display:flex;justify-content:center;padding:32px 16px}
+  main{max-width:420px;width:100%}
+  input,button{width:100%;padding:14px;margin:6px 0;border-radius:12px;border:0;font-size:18px;box-sizing:border-box}
+  button{background:#4363d8;color:#fff;cursor:pointer}
+  #out{margin-top:14px;min-height:1.4em}
+  .key{background:var(--card);border:2px solid var(--accent);border-radius:12px;padding:16px;font:700 22px ui-monospace,monospace;text-align:center;letter-spacing:.04em;user-select:all;word-break:break-all}
+  .err{color:#ff9b9b} a{color:var(--accent)}
+</style></head><body><main>
+<h1>Your Party Pack key</h1>
+<p>Thanks for the support! Enter the email you used on Buy Me a Coffee and your key will appear here.</p>
+<input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+<button id="go">Show my key</button>
+<div id="out"></div>
+<p style="opacity:.7;font-size:14px">Paste the key into the game: when creating a room, or with <i>Unlock 10 players</i> in a room. It also opens the Party Pack levels. <a href="/">Back to the game</a></p>
+</main>
+<script>
+const $ = id => document.getElementById(id), out = $('out');
+const say = (h, cls) => { out.className = cls || ''; out.textContent = h; };
+async function go() {
+  const email = $('email').value.trim(); if (!email) return say('Enter your email first', 'err');
+  $('go').disabled = true; say('Checking...');
+  try {
+    const r = await fetch('/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+    const j = await r.json();
+    if (j.key) { out.className = ''; out.innerHTML = '<div class="key"></div><p>Save it somewhere. You can come back here any time with the same email.</p>'; out.querySelector('.key').textContent = j.key; }
+    else if (j.notFound) say('No Party Pack purchase found for that email yet. If you just paid, wait a minute and try again. Make sure it is the email you used at checkout.', 'err');
+    else if (j.error === 'slow') say('Too many tries, wait a minute.', 'err');
+    else if (j.error === 'bad') say('That does not look like an email address.', 'err');
+    else if (j.error === 'off') say('Automatic keys are not switched on yet. Please contact the owner.', 'err');
+    else say('Could not check right now. Try again in a minute.', 'err');
+  } catch { say('Network problem. Try again.', 'err'); }
+  $('go').disabled = false;
+}
+$('go').onclick = go; $('email').onkeydown = e => { if (e.key === 'Enter') go(); };
+</script></body></html>

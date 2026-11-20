@@ -23,6 +23,10 @@ services:
         sync: false
       - key: KEY_SECRET     # signs Party Pack keys (make them with `npm run key`); changing it voids every key already sold
         sync: false
+      - key: BMC_TOKEN      # Buy Me a Coffee API token (read-only); turns on the /claim page
+        sync: false
+      - key: BMC_EXTRA_TITLE  # title (or part of it) of the Party Pack extra; default Party Pack
+        sync: false
       - key: REVOKED_KEYS   # comma-separated keys to switch off (refunds, leaks)
         sync: false
       - key: POLAR_ORG_ID   # Polar organization id; setting it turns on key checking

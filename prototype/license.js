@@ -11,7 +11,12 @@ const norm = k => String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const toChars = buf => Array.from(buf, b => ALPHA[b % ALPHA.length]).join('');
 const sign = (id, secret) => toChars(crypto.createHmac('sha256', secret).update(id).digest().subarray(0, 8));
 const fmt = body => 'PP-' + body.match(/.{1,4}/g).join('-');
-function makeKey(secret) { if (!secret) throw new Error('KEY_SECRET is not set'); const id = toChars(crypto.randomBytes(8)); return fmt(id + sign(id, secret)); }
+// seed (optional): derive the key from it, so the same purchase always gets the same key
+function makeKey(secret, seed) {
+  if (!secret) throw new Error('KEY_SECRET is not set');
+  const id = seed == null ? toChars(crypto.randomBytes(8)) : toChars(crypto.createHmac('sha256', secret).update('id:' + seed).digest().subarray(0, 8));
+  return fmt(id + sign(id, secret));
+}
 function signedOk(key) {
   const secret = process.env.KEY_SECRET; if (!secret) return false; // never sign with an empty secret
   const n = norm(key); if (n.length !== 18 || !n.startsWith('PP')) return false;

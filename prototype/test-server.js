@@ -76,6 +76,8 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   const signed = require('./license').makeKey('srv-secret'); const sk = node('SIGN1', undefined, 'h', undefined, signed); await until(() => sk.roster);
   check('a room created with a generated (signed) key is unlocked', () => assert.strictEqual(sk.roster.cap, 10));
   sk.ws.close();
+  const claimPage = await get('/claim'), claimOff = await new Promise((res, rej) => { const q = http.request({ host: '127.0.0.1', port: PORT, path: '/claim', method: 'POST' }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => res(JSON.parse(d))); }); q.on('error', rej); q.end(JSON.stringify({ email: 'a@b.com' })); });
+  check('/claim serves the claim page, and claiming says it is off when no BMC_TOKEN is set', () => { assert(/Party Pack key/.test(claimPage)); assert.deepStrictEqual(claimOff, { error: 'off' }); });
   console.log('Party Pack levels:');
   const fl = node('PREM1', undefined, 'h', 8); await sleep(250);
   check('a free room asked to start on a premium level starts on level 1', () => assert.deepStrictEqual(fl.lvls, [1]));
