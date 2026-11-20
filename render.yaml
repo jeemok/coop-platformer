@@ -21,5 +21,7 @@ services:
         value: "5"
       - key: BUY_URL        # store page where a Party Pack key is sold (set in the dashboard)
         sync: false
-      - key: LS_PRODUCT_ID  # Lemon Squeezy product id; only keys for this product unlock rooms
+      - key: POLAR_ORG_ID   # Polar organization id; setting it turns on key checking
+        sync: false
+      - key: POLAR_BENEFIT_ID  # the License Key benefit on the Party Pack product; only its keys unlock rooms
         sync: false

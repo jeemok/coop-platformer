@@ -1,16 +1,22 @@
-// Lemon Squeezy license check, with the network mocked.
+// Polar license check, with the network mocked.
 const assert = require('assert'); const lic = require('./license');
 const ok = (n, f) => f().then(() => console.log('  ok  ', n)).catch(e => { console.error('  FAIL', n, '-', e.message); process.exitCode = 1; });
-const resp = j => async () => ({ json: async () => j });
+const resp = (j, status = 200) => async () => ({ ok: status >= 200 && status < 300, status, json: async () => j });
 (async () => {
   console.log('License checks:');
-  process.env.LS_PRODUCT_ID = '777'; delete process.env.UNLOCK_KEYS;
-  const good = { valid: true, license_key: { status: 'active' }, meta: { product_id: 777 } };
-  lic._setFetch(resp(good)); await ok('a valid active key for our product is accepted', async () => assert.strictEqual(await lic.check('K1'), true));
-  lic._setFetch(resp({ ...good, meta: { product_id: 1 } })); await ok('a key for another product is rejected', async () => assert.strictEqual(await lic.check('K2'), false));
-  lic._setFetch(resp({ ...good, license_key: { status: 'disabled' } })); await ok('a refunded/disabled key is rejected', async () => assert.strictEqual(await lic.check('K3'), false));
-  lic._setFetch(resp({ valid: false })); await ok('an invalid key is rejected', async () => assert.strictEqual(await lic.check('K4'), false));
-  lic._setFetch(async () => { throw new Error('down'); }); await ok('a provider outage never unlocks', async () => assert.strictEqual(await lic.check('K5'), false));
-  delete process.env.LS_PRODUCT_ID; lic._setFetch(resp(good)); await ok('with no provider configured only UNLOCK_KEYS count', async () => assert.strictEqual(await lic.check('K6'), false));
+  process.env.POLAR_ORG_ID = 'org-1'; process.env.POLAR_BENEFIT_ID = 'ben-1'; delete process.env.UNLOCK_KEYS; delete process.env.POLAR_API;
+  const good = { status: 'granted', benefit_id: 'ben-1', organization_id: 'org-1', expires_at: null };
+  let seen; lic._setFetch(async (u, o) => { seen = { u, b: JSON.parse(o.body) }; return resp(good)(); });
+  await ok('a granted key for our benefit is accepted', async () => assert.strictEqual(await lic.check('K1'), true));
+  await ok('request goes to Polar with org + benefit, and does not use up the key', async () => { assert.strictEqual(seen.u, 'https://api.polar.sh/v1/customer-portal/license-keys/validate'); assert.deepStrictEqual(seen.b, { key: 'K1', organization_id: 'org-1', benefit_id: 'ben-1' }); });
+  process.env.POLAR_API = 'https://sandbox-api.polar.sh/'; await ok('POLAR_API switches to the sandbox', async () => { await lic.check('K1b'); assert(seen.u.startsWith('https://sandbox-api.polar.sh/v1/')); }); delete process.env.POLAR_API;
+  lic._setFetch(resp({ ...good, benefit_id: 'other' })); await ok('a key from another benefit is rejected', async () => assert.strictEqual(await lic.check('K2'), false));
+  lic._setFetch(resp({ detail: 'not found' }, 404)); await ok('a revoked or unknown key (404) is rejected', async () => assert.strictEqual(await lic.check('K3'), false));
+  lic._setFetch(resp({ ...good, expires_at: new Date(Date.now() - 1000).toISOString() })); await ok('an expired key is rejected', async () => assert.strictEqual(await lic.check('K4'), false));
+  lic._setFetch(resp({ ...good, expires_at: new Date(Date.now() + 86400000).toISOString() })); await ok('a key that has not expired is accepted', async () => assert.strictEqual(await lic.check('K4b'), true));
+  lic._setFetch(resp(good, 500)); await ok('a server error never unlocks', async () => assert.strictEqual(await lic.check('K5'), false));
+  lic._setFetch(async () => { throw new Error('down'); }); await ok('a provider outage never unlocks', async () => assert.strictEqual(await lic.check('K6'), false));
+  let calls = 0; lic._setFetch(async () => { calls++; return resp(good)(); }); await ok('a validated key is cached', async () => { await lic.check('K7'); await lic.check('K7'); assert.strictEqual(calls, 1); });
+  delete process.env.POLAR_ORG_ID; lic._setFetch(resp(good)); await ok('with no provider configured only UNLOCK_KEYS count', async () => assert.strictEqual(await lic.check('K8'), false));
   process.env.UNLOCK_KEYS = 'A, B'; await ok('static keys work', async () => assert.strictEqual(await lic.check('B'), true));
 })();

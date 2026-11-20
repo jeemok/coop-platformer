@@ -59,7 +59,7 @@ It starts the server, prints the address phones should use, and opens the shared
 ## Payments and support
 
 - **Donate:** [buymeacoffee.com/jeemok](https://buymeacoffee.com/jeemok) (button on the home page and in the game bar).
-- **Party Pack (6-10 players):** a host enters a license key when creating a room, or clicks *Unlock 10 players* in the game bar. The server checks the key against Lemon Squeezy's public license-validation endpoint (only active keys for `LS_PRODUCT_ID` count) and then that room holds up to 10. Set `BUY_URL` to the store page and `LS_PRODUCT_ID` in the host's environment. `UNLOCK_KEYS=a,b` accepts fixed keys (manual sales and testing). Keys are not bound to one room yet, so a shared key works for anyone who has it.
+- **Party Pack (6-10 players):** a host enters a license key when creating a room, or clicks *Unlock 10 players* in the game bar. The server checks the key against [Polar](https://polar.sh)'s public license-validation endpoint (no secret needed; only granted keys for the `POLAR_BENEFIT_ID` license-key benefit count) and then that room holds up to 10. Set `BUY_URL` to the Polar checkout link, plus `POLAR_ORG_ID` and `POLAR_BENEFIT_ID`, in the host's environment (`POLAR_API=https://sandbox-api.polar.sh` to test without real money). `UNLOCK_KEYS=a,b` accepts fixed keys (manual sales and testing). Keys are not bound to one room yet, so a shared key works for anyone who has it.
 
 ## Run it yourself
 
@@ -85,7 +85,7 @@ cd prototype
 npm test
 ```
 
-128 automated checks plus physics assertions, all headless:
+133 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
@@ -93,7 +93,7 @@ npm test
 | `test-levels.js` | Bots complete all 8 campaign levels with min, min+2 and 10 players, with no deaths. Debug one: `ONLY=6:4 TRACE=1 node test-levels.js` |
 | `test-classic.js` | The 12 original 40-tile levels, kept as fixtures, plus negative tests |
 | `test-server.js` | Real WebSockets: level choice, host rights, one-screen mode (screen vs pads, idle pads stop) |
-| `test-license.js` | Party Pack key checks with the payment API mocked: wrong product, refunded keys and outages never unlock |
+| `test-license.js` | Party Pack key checks with the payment API mocked: wrong benefit, revoked or expired keys and outages never unlock |
 | `test-predict.js` | The real client prediction against the real server over a simulated laggy network |
 
 The browser client itself (drawing, touch) is not covered by automated tests; it was checked by hand in headless Chrome, not yet on real phones.

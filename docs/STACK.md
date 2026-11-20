@@ -12,7 +12,7 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
 | Hosting (planned) | Render free web service, Singapore | Players are mostly in Southeast Asia. |
 | Source | GitHub (private repo) | Render deploys from it via `render.yaml`. |
 | Art / audio | Drawn in code | Characters, key, door, tiles, background and particles are drawn with Canvas calls; sound effects are a tiny WebAudio synth. No asset files. |
-| Payments | Built (needs seller setup) | Host unlock for 6-10 players via a license key validated against Lemon Squeezy (`license.js`); donations via Buy Me a Coffee. |
+| Payments | Built (needs seller setup) | Host unlock for 6-10 players via a license key validated against Polar (`license.js`); donations via Buy Me a Coffee. |
 
 ## Architecture
 
@@ -62,7 +62,7 @@ Last updated 2026-11-05 (after the first playtest: moving platforms, then long h
 
 ## Paid unlock
 
-Free rooms hold `FREE_PLAYERS` (5). A key (from the join message, or `{t:'unlock'}` from the host/screen) is checked by `license.js`: `UNLOCK_KEYS` first, then Lemon Squeezy `POST /v1/licenses/validate` (no secret needed; must be `status: active` and `meta.product_id == LS_PRODUCT_ID`; positives cached 10 min). Valid means `room.unlocked = true` and the cap is `MAX_PLAYERS` (10) until the room empties. A provider outage never unlocks. Five bad keys per connection are tolerated. Limitation: a key is not bound to one room or limited by activations, so a leaked key works for anyone.
+Free rooms hold `FREE_PLAYERS` (5). A key (from the join message, or `{t:'unlock'}` from the host/screen) is checked by `license.js`: `UNLOCK_KEYS` first, then Polar `POST /v1/customer-portal/license-keys/validate` (no token needed; body is `key`, `organization_id` = `POLAR_ORG_ID` and `benefit_id` = `POLAR_BENEFIT_ID`; must return `status: granted`, the same benefit and a future or empty `expires_at`; no `increment_usage`, so checks never use up the key; `POLAR_API` selects the sandbox; positives cached 10 min). Polar's docs suggest the token-authenticated `/v1/license-keys/validate` for server-side checks; switching later would need an access token in the environment. Valid means `room.unlocked = true` and the cap is `MAX_PLAYERS` (10) until the room empties. A provider outage never unlocks. Five bad keys per connection are tolerated. Limitation: a key is not bound to one room or limited by activations, so a leaked key works for anyone.
 
 ## Choir gates and Party Pack levels
 
