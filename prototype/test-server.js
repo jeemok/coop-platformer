@@ -73,7 +73,7 @@ let ok = 0; const check = (name, fn) => { try { fn(); console.log('  ok  ', name
   check('a room created with a valid key is unlocked from the start', () => { assert.strictEqual(paidRoom.roster.cap, 10); assert.strictEqual(paidRoom.roster.p.length, 10); });
   const badCreate = node('BADK1', undefined, 'x', undefined, 'wrong'); await sleep(250);
   check('a room created with a bad key is just a free room', () => { assert(badCreate.id); assert.strictEqual(badCreate.roster.cap, 5); });
-  const signed = require('./license').makeKey('srv-secret'); const sk = node('SIGN1', undefined, 'h', undefined, signed); await sleep(300);
+  const signed = require('./license').makeKey('srv-secret'); const sk = node('SIGN1', undefined, 'h', undefined, signed); await until(() => sk.roster);
   check('a room created with a generated (signed) key is unlocked', () => assert.strictEqual(sk.roster.cap, 10));
   sk.ws.close();
   console.log('Party Pack levels:');

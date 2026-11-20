@@ -93,7 +93,7 @@ npm test
 | `test-levels.js` | Bots complete all 8 campaign levels with min, min+2 and 10 players, with no deaths. Debug one: `ONLY=6:4 TRACE=1 node test-levels.js` |
 | `test-classic.js` | The 12 original 40-tile levels, kept as fixtures, plus negative tests |
 | `test-server.js` | Real WebSockets: level choice, host rights, one-screen mode (screen vs pads, idle pads stop) |
-| `test-license.js` | Party Pack key checks with the payment API mocked: signed keys, tampered, revoked and wrong-secret keys, and outages |
+| `test-license.js` | Party Pack key checks with the payment API mocked: signed keys (accepted, tampered, revoked, wrong secret) and provider outages never unlock |
 | `test-predict.js` | The real client prediction against the real server over a simulated laggy network |
 
 The browser client itself (drawing, touch) is not covered by automated tests; it was checked by hand in headless Chrome, not yet on real phones.
