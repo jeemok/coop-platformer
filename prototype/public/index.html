@@ -93,7 +93,7 @@
   <details id="keybox" style="margin:6px 0;font-size:13px"><summary style="cursor:pointer;opacity:.85">Party Pack: 6-10 players per room</summary>
     <div style="opacity:.75;margin:6px 0">Free rooms hold 5 players. The host can unlock 10 with a Party Pack key (one-time purchase).</div>
     <input id="key" placeholder="Party Pack key (optional)" autocomplete="off" maxlength="100">
-    <a id="buyLink" target="_blank" rel="noopener" style="display:none;color:#ffd23f">Get a Party Pack key &rarr;</a> <span style="opacity:.7;font-size:13px">(the key is emailed to you after you buy)</span></details>
+    <a id="buyLink" target="_blank" rel="noopener" style="display:none;color:#ffd23f">Get a Party Pack key &rarr;</a> <span style="opacity:.8;font-size:13px">After buying, <a href="/claim" target="_blank" style="color:#ffd23f">get your key here</a>.</span></details>
   <button id="go">Play</button>
   <div id="partyNote" style="display:none;font-size:13px;opacity:.8">Opens the game on this screen with a QR code. Everyone scans it with their phone to get a controller.</div>
   <div id="err"></div>
@@ -289,7 +289,7 @@ function setupTouch() {
   }
   document.addEventListener('contextmenu', e => e.preventDefault());
 }
-$('unlock').onclick = () => { if (cfg.buy && !confirm('Do you already have a Party Pack key?\nOK = enter it, Cancel = open the store to buy one')) { window.open(cfg.buy, '_blank'); return; } const k = prompt('Paste your Party Pack key'); if (k) ws.send(JSON.stringify({ t: 'unlock', key: k.trim() })); };
+$('unlock').onclick = () => { if (cfg.buy && !confirm('Do you already have a Party Pack key?\nOK = enter it, Cancel = open the store to buy one (after buying, your key is shown at /claim)')) { window.open(cfg.buy, '_blank'); return; } const k = prompt('Paste your Party Pack key'); if (k) ws.send(JSON.stringify({ t: 'unlock', key: k.trim() })); };
 $('restart').onclick = () => { ws.send(JSON.stringify({ t: 'restart' })); $('restart').blur(); };
 
 const map = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j' };
