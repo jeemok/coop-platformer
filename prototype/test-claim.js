@@ -24,6 +24,9 @@ const buy = (email, title = 'Party Pack', extra = {}) => ({ supporter_email: ema
   _setFetch(async () => ({ ok: false, status: 401, json: async () => ({}) })); await ok('an API error never returns a key', async () => assert.deepStrictEqual(await claim('bob@example.com'), { error: 'api' }));
   _setFetch(async () => { throw new Error('down'); }); await ok('a network failure never returns a key', async () => assert.deepStrictEqual(await claim('bob@example.com'), { error: 'api' }));
   _setFetch(pages([[buy('g@x.com')]])); await ok('a bad email is refused before any lookup', async () => assert.deepStrictEqual(await claim('not-an-email'), { error: 'bad' }));
+  const many = N => async (u) => { const p = +new URL(u).searchParams.get('page'); return { ok: true, status: 200, json: async () => ({ data: p === N ? [buy('late@x.com')] : [buy('x' + p + '@x.com')], current_page: p, last_page: N }) }; };
+  _setFetch(many(15)); await ok('with 15 pages the newest page is scanned, so a late buyer is found (order does not matter)', async () => assert((await claim('late@x.com')).key));
+  _setFetch(many(15)); await ok('with 15 pages a buyer on page 1 is still found', async () => assert((await claim('x1@x.com')).key));
   let n = 0; _setFetch(async () => { n++; return { ok: true, status: 200, json: async () => ({ data: [{ x: 1 }], last_page: 999 }) }; }); await ok('scanning stops after 10 pages', async () => { await claim('h@x.com'); assert.strictEqual(n, 10); });
   delete process.env.BMC_TOKEN; await ok('with no BMC_TOKEN claiming is off', async () => assert.deepStrictEqual(await claim('bob@example.com'), { error: 'off' }));
   process.env.BMC_TOKEN = 't'; delete process.env.KEY_SECRET; await ok('with no KEY_SECRET claiming is off', async () => assert.deepStrictEqual(await claim('bob@example.com'), { error: 'off' }));

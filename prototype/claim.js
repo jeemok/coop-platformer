@@ -29,13 +29,21 @@ async function claim(emailRaw) {
   const email = normEmail(emailRaw); if (!/^[^@\s]+@[^@\s]+$/.test(email)) return { error: 'bad' };
   const want = (process.env.BMC_EXTRA_TITLE || 'Party Pack').toLowerCase(), base = (process.env.BMC_API || 'https://developers.buymeacoffee.com/api/v1').replace(/\/+$/, '');
   try {
-    for (let page = 1; page <= MAX_PAGES; page++) {
+    // Order of the list is not documented. Scan page 1, then (if there are more pages than the cap) the LAST pages
+    // counting down, so the newest buyers are reached whether the API lists oldest or newest first.
+    let last = 1, order = [1];
+    for (let i = 0; i < order.length; i++) {
+      const page = order[i];
       const res = await fetchImpl(base + '/extras?page=' + page, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
       if (!res.ok) { console.error('claim: Buy Me a Coffee API answered', res.status); return { error: 'api' }; }
       const j = await res.json(), items = itemsOf(j);
       if (!logged && items[0] && typeof items[0] === 'object') { logged = true; const e = items[0].extra; console.log('claim: first extras item has fields:', Object.keys(items[0]).join(','), '| list keys:', Object.keys(j || {}).join(','), '| extra fields:', e && typeof e === 'object' ? Object.keys(e).join(',') : typeof e); }
+      if (page === 1) {
+        last = Math.max(1, parseInt(j && j.last_page, 10) || 1);
+        if (last > 1) { const rest = []; if (last <= MAX_PAGES) for (let q = 2; q <= last; q++) rest.push(q); else for (let q = last; q > last - (MAX_PAGES - 1); q--) rest.push(q); order = order.concat(rest); }
+      }
       for (const p of items) if (p && emailOf(p) === email && !refunded(p) && titlesOf(p).some(t => t.includes(want))) return { key: makeKey(secret, email) };
-      if (!items.length || (j.last_page && page >= j.last_page) || (j.next_page_url === null) || (j.next_page === null)) break;
+      if (!items.length && page === 1) break;
     }
     return { notFound: true };
   } catch (e) { console.error('claim: lookup failed:', e.message); return { error: 'api' }; }

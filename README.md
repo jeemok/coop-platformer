@@ -59,7 +59,7 @@ It starts the server, prints the address phones should use, and opens the shared
 ## Payments and support
 
 - **Donate:** [buymeacoffee.com/jeemok](https://buymeacoffee.com/jeemok) (button on the home page and in the game bar).
-- **Party Pack (6-10 players + levels 9-12):** sold as a [Buy Me a Coffee](https://buymeacoffee.com/jeemok) extra. A host enters a key when creating a room, or clicks *Unlock 10 players* in the game bar, and that room holds up to 10 and opens the Party Pack levels. Keys are signed, so the server needs no database. **Automatic claim (no email sending):** set `BMC_TOKEN` (a Buy Me a Coffee API token) and `KEY_SECRET`, and point the extra's redirect-after-purchase at `/claim`; buyers type the email they paid with and the page shows their key, found through Buy Me a Coffee's read-only Extras API (beta, response shape unconfirmed: run `BMC_TOKEN=... npm run bmc-check` to see the real field names; `BMC_EXTRA_TITLE` defaults to `Party Pack`). Manual alternative: run `KEY_SECRET=... npm run key -- 3` to make keys, email one to each buyer, and set the same `KEY_SECRET` in the host's environment. `REVOKED_KEYS=a,b` switches keys off (refunds, leaks); changing `KEY_SECRET` voids all keys. Set `BUY_URL` to the extra's page. Also accepted: fixed keys in `UNLOCK_KEYS=a,b`, and an optional [Polar](https://polar.sh) check (`POLAR_ORG_ID`, `POLAR_BENEFIT_ID`; off unless set). Keys are not bound to one room, so a shared key works for anyone who has it.
+- **Party Pack (6-10 players + levels 9-12):** sold as a [Buy Me a Coffee](https://buymeacoffee.com/jeemok) extra. A host enters a key when creating a room, or clicks *Unlock 10 players* in the game bar, and that room holds up to 10 and opens the Party Pack levels. Keys are signed, so the server needs no database. **Automatic claim (no email sending):** set `BMC_TOKEN` (a Buy Me a Coffee API token) and `KEY_SECRET`, and point the extra's redirect-after-purchase at `/claim`; buyers type the email they paid with and the page shows their key, found through Buy Me a Coffee's read-only Extras API (beta; the response shape was confirmed from a live purchase: `payer_email`, an `extra` object holding the title, `purchase_is_revoked`; `npm run bmc-check` prints the current shape; `BMC_EXTRA_TITLE` defaults to `Party Pack`). Manual alternative: run `KEY_SECRET=... npm run key -- 3` to make keys, email one to each buyer, and set the same `KEY_SECRET` in the host's environment. `REVOKED_KEYS=a,b` switches keys off (refunds, leaks); changing `KEY_SECRET` voids all keys. Set `BUY_URL` to the extra's page. Also accepted: fixed keys in `UNLOCK_KEYS=a,b`, and an optional [Polar](https://polar.sh) check (`POLAR_ORG_ID`, `POLAR_BENEFIT_ID`; off unless set). Keys are not bound to one room, so a shared key works for anyone who has it.
 
 ## Run it yourself
 
@@ -85,7 +85,7 @@ cd prototype
 npm test
 ```
 
-159 automated checks plus physics assertions, all headless:
+161 automated checks plus physics assertions, all headless:
 
 | Suite | What it proves |
 |---|---|
