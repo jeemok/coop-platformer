@@ -142,3 +142,25 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 3. Real art and sound; mobile controls if wanted.
 4. Reconnect, kick, name moderation; room list / quick-join.
 5. Move to a flat-rate Singapore VPS before promoting it.
+
+## Operating the Party Pack (checklist and known limits)
+
+**Setup, once.** Sell a Buy Me a Coffee shop item whose title contains "Party Pack" (or set `BMC_EXTRA_TITLE`), with "redirect after purchase" set to `<your site>/claim`. In Render set `KEY_SECRET`, `BMC_TOKEN`, `BUY_URL` (the item's page), then redeploy. Check: `POST /claim` with an unknown email answers `{"notFound":true}` (`{"error":"off"}` means a variable is missing).
+
+**Secrets.**
+- `KEY_SECRET` is permanent: changing it voids every key already sold. Keep it in a password manager, never in the repo.
+- `BMC_TOKEN` reads all supporter data. To rotate: create the new token, set it in Render, redeploy, check `/claim` still answers `notFound`, and only then revoke the old one (revoking first breaks claims).
+
+**Refunds and leaks.** A refund stops new claims for that email, but a key already issued keeps working until it is added to `REVOKED_KEYS` (comma separated) and the service is redeployed. A room that is already unlocked stays unlocked until it empties.
+
+**Known limits.**
+- Anyone who knows a buyer's email can claim that buyer's key (accepted trade-off for zero owner involvement).
+- Keys are not bound to a room or a device, so a key can be shared.
+- The repo is public, so a self-hosted copy can switch the lock off (`UNLOCK_ALL`); the lock only protects the hosted site.
+- Buy Me a Coffee's Extras API is beta and could change. `npm run bmc-check` shows its current shape; manual keys (`npm run key`) and `UNLOCK_KEYS` keep working as a backup.
+- Local mode (`npm run local`) keeps the 5-player cap and the Party Pack lock; it does not skip the key.
+- The browser client was verified in headless Chrome with fake controllers, not on real phones, so feel and latency on real devices are unconfirmed.
+- The Render region is unconfirmed (Singapore was requested); check the service's settings. Free instances sleep after 15 idle minutes.
+- Polar support is still in `license.js` but is off unless `POLAR_ORG_ID` is set.
+
+**Open decisions.** Game name and visual style; the Party Pack price (was $1 for testing); whether local mode should skip the key; whether to move to a Singapore VPS later.
