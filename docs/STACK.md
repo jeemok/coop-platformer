@@ -137,11 +137,13 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 
 ## Next steps
 
-1. Playtest and tune: jump height, speed, level pacing.
-2. Decide the paid unlock model, price, and seller/tax setup (open questions in the design doc).
-3. Real art and sound; mobile controls if wanted.
+Done since this list was first written: the paid unlock (Party Pack keys sold through Buy Me a Coffee, claimed on `/claim`), phone controllers (`/pad`), one-screen and local modes, and the Party Pack levels 9-12.
+
+1. Playtest on real phones and with real groups: jump feel, latency (the pad shows its ping), level pacing, and how hard the Party Pack levels are for people (only bots have played them).
+2. Set the final Party Pack price (it was $1 for testing) and replace the exposed API token (see "Operating the Party Pack").
+3. Pick a game name and a visual style, then real art and sound.
 4. Reconnect, kick, name moderation; room list / quick-join.
-5. Move to a flat-rate Singapore VPS before promoting it.
+5. Move to a flat-rate Singapore VPS before promoting it, and confirm the current Render region meanwhile.
 
 ## Operating the Party Pack (checklist and known limits)
 
