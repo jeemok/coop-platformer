@@ -14,7 +14,8 @@ let logged = false;
 const emailOf = p => normEmail(p.supporter_email || p.payer_email || p.email || (p.supporter && p.supporter.email) || (p.payer && p.payer.email));
 const titlesOf = p => {
   const t = [];
-  for (const x of [].concat(p.extras || [], p.extra || [], p.items || [])) if (x) t.push(typeof x === 'string' ? x : x.title || x.name || '');
+  // the real API gives `extra` as an object whose title field name is not documented, so read every text value in it
+  for (const x of [].concat(p.extras || [], p.extra || [], p.items || [])) if (x) { if (typeof x === 'string') t.push(x); else for (const v of Object.values(x)) if (typeof v === 'string') t.push(v); }
   for (const k of ['extra_title', 'title', 'item_title', 'name']) if (typeof p[k] === 'string') t.push(p[k]);
   return t.map(s => s.toLowerCase());
 };
@@ -32,7 +33,7 @@ async function claim(emailRaw) {
       const res = await fetchImpl(base + '/extras?page=' + page, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
       if (!res.ok) { console.error('claim: Buy Me a Coffee API answered', res.status); return { error: 'api' }; }
       const j = await res.json(), items = itemsOf(j);
-      if (!logged && items[0] && typeof items[0] === 'object') { logged = true; console.log('claim: first extras item has fields:', Object.keys(items[0]).join(','), '| list keys:', Object.keys(j || {}).join(',')); }
+      if (!logged && items[0] && typeof items[0] === 'object') { logged = true; const e = items[0].extra; console.log('claim: first extras item has fields:', Object.keys(items[0]).join(','), '| list keys:', Object.keys(j || {}).join(','), '| extra fields:', e && typeof e === 'object' ? Object.keys(e).join(',') : typeof e); }
       for (const p of items) if (p && emailOf(p) === email && !refunded(p) && titlesOf(p).some(t => t.includes(want))) return { key: makeKey(secret, email) };
       if (!items.length || (j.last_page && page >= j.last_page) || (j.next_page_url === null) || (j.next_page === null)) break;
     }

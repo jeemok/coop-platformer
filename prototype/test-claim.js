@@ -16,6 +16,11 @@ const buy = (email, title = 'Party Pack', extra = {}) => ({ supporter_email: ema
   _setFetch(pages([[buy('d@x.com', 'Party Pack', { purchase_is_revoked: true })]])); await ok('a revoked purchase is rejected', async () => assert.deepStrictEqual(await claim('d@x.com'), { notFound: true }));
   _setFetch(pages([[buy('e@x.com', 'Party Pack', { status: 'refunded' })]])); await ok('a refunded purchase is rejected', async () => assert.deepStrictEqual(await claim('e@x.com'), { notFound: true }));
   _setFetch(pages([[{ payer_email: 'f@x.com', extras: [{ title: 'Co-op Party Pack' }] }]])); await ok('other field names (payer_email, extras[]) are understood', async () => assert((await claim('f@x.com')).key));
+  const real = (email, extra, rev = 0) => ({ purchase_id: 1, payer_email: email, payer_name: 'x', purchase_is_revoked: rev, extra, support: {} });
+  _setFetch(pages([[real('r@x.com', { extra_id: 7, extra_title: 'Co-op Platformer Party Pack', extra_description: 'd' })]])); await ok('the real shape (payer_email, extra object with an unknown title field name) matches', async () => assert((await claim('r@x.com')).key));
+  _setFetch(pages([[real('s@x.com', { id: 8, name: 'Sticker' })]])); await ok('the real shape for a different extra is rejected', async () => assert.deepStrictEqual(await claim('s@x.com'), { notFound: true }));
+  _setFetch(pages([[real('u@x.com', { title: 'Party Pack' }, 1)]])); await ok('the real shape with purchase_is_revoked=1 is rejected', async () => assert.deepStrictEqual(await claim('u@x.com'), { notFound: true }));
+  _setFetch(pages([[real('v@x.com', { title: 'Party Pack' }, 0)]])); await ok('purchase_is_revoked=0 is a live purchase', async () => assert((await claim('v@x.com')).key));
   _setFetch(async () => ({ ok: false, status: 401, json: async () => ({}) })); await ok('an API error never returns a key', async () => assert.deepStrictEqual(await claim('bob@example.com'), { error: 'api' }));
   _setFetch(async () => { throw new Error('down'); }); await ok('a network failure never returns a key', async () => assert.deepStrictEqual(await claim('bob@example.com'), { error: 'api' }));
   _setFetch(pages([[buy('g@x.com')]])); await ok('a bad email is refused before any lookup', async () => assert.deepStrictEqual(await claim('not-an-email'), { error: 'bad' }));
