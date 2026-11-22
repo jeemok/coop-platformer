@@ -140,7 +140,7 @@ bandwidth than EU ones). Per-player bandwidth is about 48 kbps from the server a
 Done since this list was first written: the paid unlock (Party Pack keys sold through Buy Me a Coffee, claimed on `/claim`), phone controllers (`/pad`), one-screen and local modes, and the Party Pack levels 9-12.
 
 1. Playtest on real phones and with real groups: jump feel, latency (the pad shows its ping), level pacing, and how hard the Party Pack levels are for people (only bots have played them).
-2. Set the final Party Pack price (it was $1 for testing). The API token was pasted into a chat during setup and the owner chose to keep it; it is read-only, and can be rotated any time (see "Operating the Party Pack").
+2. The Party Pack price is now $2 (it was $1 for testing); revisit it once there are real buyers. The API token was pasted into a chat during setup and the owner chose to keep it; it is read-only, and can be rotated any time (see "Operating the Party Pack").
 3. Pick a game name and a visual style, then real art and sound.
 4. Reconnect, kick, name moderation; room list / quick-join.
 5. Move to a flat-rate Singapore VPS before promoting it, and confirm the current Render region meanwhile.
@@ -165,4 +165,4 @@ Done since this list was first written: the paid unlock (Party Pack keys sold th
 - The Render region is unconfirmed (Singapore was requested); check the service's settings. Free instances sleep after 15 idle minutes.
 - Polar support is still in `license.js` but is off unless `POLAR_ORG_ID` is set.
 
-**Open decisions.** Game name and visual style; the Party Pack price (was $1 for testing); whether local mode should skip the key; whether to move to a Singapore VPS later.
+**Open decisions.** Game name and visual style; whether local mode should skip the key; whether to move to a Singapore VPS later.
